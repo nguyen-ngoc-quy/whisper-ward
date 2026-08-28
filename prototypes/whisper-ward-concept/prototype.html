@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whisper Ward — Core Loop Prototype</title>
+<style>
+  html, body {
+    margin: 0; height: 100%;
+    background: #0a0e17;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #c9d4e4;
+  }
+  #wrap { position: relative; }
+  canvas {
+    border: 2px solid #2a3550;
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(60, 90, 160, 0.25);
+  }
+  #help {
+    margin-top: 10px; font-size: 13px; color: #7d8aa5; letter-spacing: 0.5px;
+  }
+  kbd {
+    background: #1c2740; border: 1px solid #33415e; border-radius: 4px;
+    padding: 1px 6px; font-size: 12px; color: #dfe8f7;
+  }
+</style>
+</head>
+<body>
+  <div id="wrap"><canvas id="cv" width="960" height="640"></canvas></div>
+  <div id="help">
+    <kbd>W A S D</kbd> move &nbsp;·&nbsp; <kbd>Shift</kbd> crouch (silent, slow) &nbsp;·&nbsp;
+    <kbd>Click</kbd> throw noise-maker &nbsp;·&nbsp; <kbd>R</kbd> restart
+  </div>
+
+<script>
+// PROTOTYPE - NOT FOR PRODUCTION
+// Question: Does the one-room thinking-AI loop (early-warning suspicion meter +
+//           throwable noise-maker vs one guard) read as fair, readable, and
+//           satisfying — does the "guard passes by, none the wiser" payoff land?
+// Date: 2026-08-13
+
+"use strict";
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 960, H = 640;
+
+// ---------- Room geometry ----------
+// Walls are rects {x,y,w,h}. Border frame + interior cover crates.
+const WALLS = [
+  // border
+  { x: 0,    y: 0,    w: W, h: 14 },
+  { x: 0,    y: H-14, w: W, h: 14 },
+  { x: 0,    y: 0,    w: 14, h: H },
+  { x: W-14, y: 0,    w: 14, h: H },
+  // interior cover
+  { x: 300, y: 120, w: 90,  h: 26 },
+  { x: 300, y: 470, w: 90,  h: 26 },
+  { x: 560, y: 300, w: 26,  h: 90 },
+  { x: 150, y: 300, w: 26,  h: 90 },
+  { x: 470, y: 120, w: 26,  h: 70 },
+  { x: 470, y: 450, w: 26,  h: 70 },
+  { x: 690, y: 160, w: 70,  h: 26 },
+  { x: 690, y: 470, w: 70,  h: 26 },
+];
+
+// ---------- Tuning (the committed two-timeframe ladder) ----------
+const SUS_INVESTIGATE = 0.30;   // threshold to go investigate (fast rung)
+const SUS_CHASE       = 1.00;   // full detection
+const SUS_CHARGE      = 0.52;   // /sec while clear LOS  -> ~0.58s to Investigate, ~1.9s more to Chase
+const SUS_DECAY       = 0.13;   // /sec after hold       -> slow residual, not instant reset
+const SUS_DECAY_HOLD  = 0.40;   // seconds of no-LOS before decay begins
+
+const GUARD_FOV   = 100 * Math.PI / 180;
+const GUARD_RANGE = 235;
+const GUARD_CATCH = 18;
+
+const NOISE_HEAR_RADIUS = 205;  // noise-maker hearing radius
+const WALK_NOISE_RADIUS = 78;   // soft footstep noise radius
+const WALK_NOISE_INTERVAL = 0.35;
+
+// ---------- Entities ----------
+let player, guard, artifact, noiseMakers, noiseEvents;
+let suspicion, suspicionSource, susLabelTimer;
+let state;              // 'play' | 'caught' | 'won'
+let stats, chaseTrigger, guardThoughtTimer;
+let lastCatchCause;
+
+function resetGame() {
+  player = { x: 110, y: H-110, r: 12, vx: 0, vy: 0, crouch: false };
+  guard = {
+    x: W/2, y: H/2, r: 12, angle: -Math.PI/2,
+    state: 'patrol', wpIndex: 0, speed: 0,
+    investigatePoint: null, searchTimer: 0, giveUpTimer: 0,
+    lkp: null, sawPlayerTimer: 0,
+  };
+  guard.patrolPath = [
+    { x: W/2,   y: H/2 },
+    { x: W-120, y: 110 },
+    { x: W-120, y: H-110 },
+  ];
+  artifact = { x: W-150, y: 130, r: 16 };
+  noiseMakers = 3;
+  noiseEvents = [];
+  suspicion = 0; suspicionSource = '—'; susLabelTimer = 0;
+  state = 'play';
+  stats = { captures: 0, throws: 0, startTime: performance.now(), timeAtEnd: 0 };
+  chaseTrigger = null;
+  guardThoughtTimer = 0;
+  lastCatchCause = '';
+}
+
+resetGame();
+
+// ---------- Input ----------
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyR') resetGame();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+cv.addEventListener('mousedown', e => {
+  if (state !== 'play') return;
+  const rect = cv.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (W / rect.width);
+  const my = (e.clientY - rect.top) * (H / rect.height);
+  if (noiseMakers > 0) {
+    const d = Math.hypot(mx - player.x, my - player.y);
+    if (d > 40) {  // can't throw at your own feet
+      noiseMakers--;
+      stats.throws++;
+      throwNoiseMaker(mx, my);
+    }
+  }
+});
+
+// ---------- Small helpers ----------
+function segSeg(p1, p2, p3, p4) {
+  const d1 = (p2.x-p1.x)*(p4.y-p3.y) - (p2.y-p1.y)*(p4.x-p3.x);
+  if (Math.abs(d1) < 1e-9) return null;
+  const t = ((p3.x-p1.x)*(p4.y-p3.y) - (p3.y-p1.y)*(p4.x-p3.x)) / d1;
+  const u = ((p3.x-p1.x)*(p2.y-p1.y) - (p3.y-p1.y)*(p2.x-p1.x)) / d1;
+  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+    return { x: p1.x + t*(p2.x-p1.x), y: p1.y + t*(p2.y-p1.y) };
+  }
+  return null;
+}
+function segHitsWall(x0, y0, x1, y1) {
+  const p1 = { x: x0, y: y0 }, p2 = { x: x1, y: y1 };
+  for (const r of WALLS) {
+    const corners = [
+      { x: r.x, y: r.y }, { x: r.x+r.w, y: r.y },
+      { x: r.x+r.w, y: r.y+r.h }, { x: r.x, y: r.y+r.h },
+    ];
+    for (let i = 0; i < 4; i++) {
+      if (segSeg(p1, p2, corners[i], corners[(i+1)%4])) return true;
+    }
+  }
+  return false;
+}
+function circleRectPush(c, r, rect) {
+  const cx = Math.max(rect.x, Math.min(c.x, rect.x + rect.w));
+  const cy = Math.max(rect.y, Math.min(c.y, rect.y + rect.h));
+  let dx = c.x - cx, dy = c.y - cy;
+  let d2 = dx*dx + dy*dy;
+  if (d2 < r*r) {
+    if (d2 === 0) { d2 = 1e-6; dx = 0.001; }
+    const d = Math.sqrt(d2), push = r - d;
+    c.x += dx / d * push; c.y += dy / d * push;
+  }
+}
+function clampCircleInWalls(c, r) {
+  for (const wall of WALLS) circleRectPush(c, r, wall);
+  c.x = Math.max(r, Math.min(W - r, c.x));
+  c.y = Math.max(r, Math.min(H - r, c.y));
+}
+function angDiff(a, b) {
+  let d = a - b;
+  while (d >  Math.PI) d -= 2*Math.PI;
+  while (d < -Math.PI) d += 2*Math.PI;
+  return d;
+}
+function rotToward(angle, target, turnRate, dt) {
+  let d = angDiff(target, angle);
+  const step = turnRate * dt;
+  if (Math.abs(d) <= step) return target;
+  return angle + Math.sign(d) * step;
+}
+// Vision test: sample 3 rays to player body; visible if any ray clears walls.
+function guardSeesPlayer() {
+  const d = Math.hypot(player.x - guard.x, player.y - guard.y);
+  if (d > GUARD_RANGE) return false;
+  const toP = Math.atan2(player.y - guard.y, player.x - guard.x);
+  if (Math.abs(angDiff(toP, guard.angle)) > GUARD_FOV / 2 + 0.08) return false;
+  // body-sample rays (center + perpendicular offsets)
+  const perp = toP + Math.PI / 2;
+  for (const off of [-9, 0, 9]) {
+    const ox = player.x + Math.cos(perp) * off;
+    const oy = player.y + Math.sin(perp) * off;
+    if (!segHitsWall(guard.x, guard.y, ox, oy)) return true;
+  }
+  return false;
+}
+
+// ---------- Noise-maker ----------
+function throwNoiseMaker(tx, ty) {
+  const travel = 0.5; // seconds of flight anim
+  noiseEvents.push({
+    x: tx, y: ty, radius: NOISE_HEAR_RADIUS, kind: 'loud',
+    age: 0, life: 0.6, travel: travel, sx: player.x, sy: player.y, phase: 'flight'
+  });
+}
+// Soft footstep noise while moving un-crouched
+let walkNoiseAcc = 0;
+function emitWalkNoise(dt) {
+  if (player.crouch) return;
+  if (player.vx !== 0 || player.vy !== 0) {
+    walkNoiseAcc += dt;
+    if (walkNoiseAcc >= WALK_NOISE_INTERVAL) {
+      walkNoiseAcc = 0;
+      noiseEvents.push({ x: player.x, y: player.y, radius: WALK_NOISE_RADIUS, kind: 'soft', age: 0, life: 0.3 });
+    }
+  } else {
+    walkNoiseAcc = 0;
+  }
+}
+
+function guardHears(ev) {
+  const d = Math.hypot(ev.x - guard.x, ev.y - guard.y);
+  if (d > ev.radius) return false;
+  // full occlusion denies (walls block sound)
+  if (segHitsWall(guard.x, guard.y, ev.x, ev.y)) return false;
+  return true;
+}
+
+// ---------- FSM ----------
+function updateGuard(dt) {
+  // sight + suspicion
+  const sees = guardSeesPlayer();
+  if (sees) {
+    guard.sawPlayerTimer += dt;
+    guard.lkp = { x: player.x, y: player.y };
+    suspicion = Math.min(SUS_CHASE, suspicion + SUS_CHARGE * dt);
+    if (suspicionSource !== 'VISION') { suspicionSource = 'VISION'; susLabelTimer = 1.0; }
+    if (suspicion >= SUS_CHASE && guard.state !== 'chase') {
+      guard.state = 'chase'; chaseTrigger = 'vision';
+    } else if (suspicion >= SUS_INVESTIGATE && guard.state === 'patrol') {
+      guard.state = 'investigate';
+      guard.investigatePoint = { x: player.x, y: player.y };
+    }
+  } else {
+    if (suspicion > 0) {
+      if (guard.sawPlayerTimer > 0) guard.sawPlayerTimer = 0;
+      if (susLabelTimer > 0) suspicionSource = 'RESIDUAL';
+      suspicion = Math.max(0, suspicion - SUS_DECAY * (dt - SUS_DECAY_HOLD > 0 ? 1 : 0));
+    }
+    // note: decay begins after hold; simplified to a hold by only decaying when timer logic passes
+  }
+
+  // hearing (consume noise events)
+  for (let i = noiseEvents.length - 1; i >= 0; i--) {
+    const ev = noiseEvents[i];
+    if (ev.phase === 'landed' && guardHears(ev)) {
+      // heard a noise
+      if (ev.kind === 'loud') {
+        suspicion = Math.min(SUS_INVESTIGATE * 0.9, suspicion + 0.12);
+        if (suspicionSource !== 'NOISE') { suspicionSource = 'NOISE'; susLabelTimer = 1.0; }
+      }
+      if (guard.state !== 'chase') {
+        guard.state = 'investigate';
+        guard.investigatePoint = { x: ev.x, y: ev.y };
+      }
+      noiseEvents.splice(i, 1);
+      continue;
+    }
+  }
+
+  const sp = { patrol: 55, investigate: 120, chase: 175 }[guard.state];
+  guard.speed = sp;
+
+  if (guard.state === 'patrol') {
+    const wp = guard.patrolPath[guard.wpIndex];
+    guard.angle = rotToward(guard.angle, Math.atan2(wp.y - guard.y, wp.x - guard.x), 3.5, dt);
+    moveToward(wp, guard.speed, dt);
+    if (Math.hypot(wp.x - guard.x, wp.y - guard.y) < 8) {
+      guard.wpIndex = (guard.wpIndex + 1) % guard.patrolPath.length;
+    }
+    if (suspicion > 0 && suspicion < SUS_INVESTIGATE) guardThoughtTimer = 0;
+  }
+
+  else if (guard.state === 'investigate') {
+    const pt = guard.investigatePoint;
+    const arrived = Math.hypot(pt.x - guard.x, pt.y - guard.y) < 10;
+    if (!arrived) {
+      guard.angle = rotToward(guard.angle, Math.atan2(pt.y - guard.y, pt.x - guard.x), 4, dt);
+      moveToward(pt, guard.speed, dt);
+    } else {
+      // look around
+      guard.angle += Math.sin(performance.now() / 300) * 0.8 * dt;
+      guard.searchTimer += dt;
+      if (guard.searchTimer > 1.6) {
+        // fruitless investigation resolves: return to patrol
+        guard.searchTimer = 0;
+        guard.state = 'patrol';
+        guardThoughtTimer = 1.4;  // the "…" payoff/relief beat
+      }
+    }
+    // if full detection happens mid-investigate, chase (handled above via vision)
+    if (suspicion >= SUS_CHASE && guard.state !== 'chase') {
+      guard.state = 'chase'; chaseTrigger = chaseTrigger || 'investigate-then-seen';
+    }
+  }
+
+  else if (guard.state === 'chase') {
+    if (sees) {
+      guard.angle = rotToward(guard.angle, Math.atan2(player.y - guard.y, player.x - guard.x), 6, dt);
+      moveToward(player, guard.speed, dt);
+      guard.giveUpTimer = 0;
+      if (Math.hypot(player.x - guard.x, player.y - guard.y) < GUARD_CATCH + player.r) {
+        lastCatchCause = causeForChase();
+        state = 'caught'; stats.captures++; stats.timeAtEnd = elapsed();
+      }
+    } else {
+      // head to last known position
+      const lkp = guard.lkp;
+      guard.angle = rotToward(guard.angle, Math.atan2(lkp.y - guard.y, lkp.x - guard.x), 5, dt);
+      moveToward(lkp, guard.speed, dt);
+      guard.giveUpTimer += dt;
+      if (guard.giveUpTimer > 2.2) {
+        guard.state = 'investigate';
+        guard.investigatePoint = lkp;
+        guard.giveUpTimer = 0;
+      }
+    }
+  }
+
+  // win condition (checked in main loop)
+}
+
+function causeForChase() {
+  if (chaseTrigger === 'vision') return 'sustained line-of-sight (you stayed in view too long)';
+  if (chaseTrigger === 'investigate-then-seen') return 'it investigated your noise, then saw you';
+  return 'the guard caught you while chasing';
+}
+
+function moveToward(pt, speed, dt) {
+  const d = Math.hypot(pt.x - guard.x, pt.y - guard.y);
+  if (d < 1) return;
+  const nx = (pt.x - guard.x) / d, ny = (pt.y - guard.y) / d;
+  guard.x += nx * speed * dt;
+  guard.y += ny * speed * dt;
+  clampCircleInWalls(guard, guard.r);
+}
+
+// ---------- Player ----------
+function updatePlayer(dt) {
+  const speed = player.crouch ? 70 : 150;
+  let ix = 0, iy = 0;
+  if (keys['KeyA'] || keys['ArrowLeft'])  ix -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+  if (keys['KeyW'] || keys['ArrowUp'])    iy -= 1;
+  if (keys['KeyS'] || keys['ArrowDown'])  iy += 1;
+  if (keys['ShiftLeft'] || keys['ShiftRight']) player.crouch = true;
+  else player.crouch = false;
+  const len = Math.hypot(ix, iy);
+  if (len > 0) { ix /= len; iy /= len; }
+  player.vx = ix * speed;
+  player.vy = iy * speed;
+  player.x += player.vx * dt;
+  player.y += player.vy * dt;
+  clampCircleInWalls(player, player.r);
+  emitWalkNoise(dt);
+
+  if (Math.hypot(artifact.x - player.x, artifact.y - player.y) < artifact.r + player.r) {
+    stats.timeAtEnd = elapsed();
+    state = 'won';
+  }
+}
+
+function elapsed() {
+  return ((performance.now() - stats.startTime) / 1000);
+}
+
+// ---------- Main loop ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  // decay suspicion with hold
+  if (state === 'play') {
+    if (!guardSeesPlayer()) {
+      if (susLabelTimer > 0) susLabelTimer -= dt;
+      if (susLabelTimer <= 0) suspicion = Math.max(0, suspicion - SUS_DECAY * dt);
+    } else {
+      susLabelTimer = Math.max(susLabelTimer, 0.05);
+    }
+    updatePlayer(dt);
+    updateGuard(dt);
+  }
+
+  // age noise events
+  for (let i = noiseEvents.length - 1; i >= 0; i--) {
+    const ev = noiseEvents[i];
+    ev.age += dt;
+    if (ev.phase === 'flight' && ev.age >= ev.travel) {
+      ev.phase = 'landed'; ev.age = 0;
+    }
+    if (ev.age > ev.life) noiseEvents.splice(i, 1);
+  }
+  if (guardThoughtTimer > 0) guardThoughtTimer -= dt;
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Drawing ----------
+function draw() {
+  // floor
+  ctx.fillStyle = '#0d1424';
+  ctx.fillRect(0, 0, W, H);
+  // subtle floor grid
+  ctx.strokeStyle = 'rgba(90,120,180,0.07)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  // walls
+  ctx.fillStyle = '#26344f';
+  for (const w of WALLS) ctx.fillRect(w.x, w.y, w.w, w.h);
+
+  // artifact (warm-gold accent)
+  const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 300);
+  ctx.shadowColor = '#ffb65c'; ctx.shadowBlur = 24 * pulse;
+  ctx.fillStyle = '#ffc168';
+  ctx.beginPath(); ctx.arc(artifact.x, artifact.y, artifact.r, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff3dd';
+  ctx.beginPath(); ctx.arc(artifact.x, artifact.y, artifact.r * 0.4, 0, 7); ctx.fill();
+
+  // noise events (expanding rings)
+  for (const ev of noiseEvents) {
+    const t = ev.phase === 'flight' ? ev.age / ev.travel : ev.age / ev.life;
+    ctx.strokeStyle = ev.kind === 'loud' ? 'rgba(255,200,110,0.8)' : 'rgba(150,190,255,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (ev.phase === 'flight') {
+      const fx = ev.sx + (ev.x - ev.sx) * t, fy = ev.sy + (ev.y - ev.sy) * t;
+      ctx.moveTo(fx, fy); ctx.arc(fx, fy, 5, 0, 7);
+    } else {
+      ctx.arc(ev.x, ev.y, ev.radius * (1 - t) + 6, 0, 7);
+    }
+    ctx.stroke();
+  }
+
+  // guard vision cone
+  const alertColor = guard.state === 'chase' ? 'rgba(255,90,90,' : guard.state === 'investigate' ? 'rgba(255,190,90,' : 'rgba(120,160,235,';
+  const alpha = guard.state === 'chase' ? 0.30 : 0.16;
+  ctx.fillStyle = alertColor + alpha + ')';
+  ctx.beginPath();
+  ctx.moveTo(guard.x, guard.y);
+  const a0 = guard.angle - GUARD_FOV/2, a1 = guard.angle + GUARD_FOV/2;
+  for (let a = a0; a <= a1; a += 0.03) {
+    ctx.lineTo(guard.x + Math.cos(a) * GUARD_RANGE, guard.y + Math.sin(a) * GUARD_RANGE);
+  }
+  ctx.closePath(); ctx.fill();
+
+  // guard body
+  ctx.fillStyle = guard.state === 'chase' ? '#ff5a5a' : guard.state === 'investigate' ? '#ffbe5a' : '#e8843c';
+  ctx.beginPath(); ctx.arc(guard.x, guard.y, guard.r, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#1a2130'; ctx.lineWidth = 2;
+  ctx.stroke();
+  // facing indicator
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(guard.x + Math.cos(guard.angle)*14, guard.y + Math.sin(guard.angle)*14, 3, 0, 7); ctx.fill();
+
+  // investigate marker / "?" when investigating
+  if (guard.state === 'investigate' && guard.investigatePoint) {
+    ctx.strokeStyle = 'rgba(255,190,90,0.9)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.arc(guard.investigatePoint.x, guard.investigatePoint.y, 14, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffbe5a'; ctx.font = 'bold 20px sans-serif';
+    ctx.fillText('?', guard.investigatePoint.x - 6, guard.investigatePoint.y + 7);
+  }
+  // the "…" relief beat when a fruitless investigation resolves
+  if (guardThoughtTimer > 0 && guard.state === 'patrol') {
+    ctx.fillStyle = 'rgba(160,220,170,0.95)';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('…', guard.x - 8, guard.y - 22);
+  }
+
+  // player
+  ctx.fillStyle = player.crouch ? '#4fc3c9' : '#7fe0ff';
+  ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#0a0e17'; ctx.lineWidth = 2; ctx.stroke();
+  if (player.crouch) {
+    ctx.strokeStyle = '#4fc3c9'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(player.x, player.y, player.r + 5, 0, 7); ctx.stroke();
+  }
+
+  // ---- HUD ----
+  // suspicion meter
+  const mx = W/2 - 90, my = 18, mw = 180, mh = 12;
+  ctx.fillStyle = 'rgba(10,14,23,0.75)';
+  ctx.fillRect(mx - 4, my - 4, mw + 8, mh + 8);
+  ctx.fillStyle = '#22304a';
+  ctx.fillRect(mx, my, mw, mh);
+  const susCol = suspicion < SUS_INVESTIGATE ? '#5aa0ff' : suspicion < SUS_CHASE ? '#ffbe5a' : '#ff5a5a';
+  ctx.fillStyle = susCol;
+  ctx.fillRect(mx, my, mw * suspicion, mh);
+  ctx.strokeStyle = '#33415e'; ctx.strokeRect(mx, my, mw, mh);
+  // threshold tick at Investigate
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath(); ctx.moveTo(mx + mw * SUS_INVESTIGATE, my - 3); ctx.lineTo(mx + mw * SUS_INVESTIGATE, my + mh + 3); ctx.stroke();
+
+  ctx.fillStyle = '#dfe8f7'; ctx.font = 'bold 12px sans-serif';
+  ctx.fillText('SUSPICION', mx, my - 8);
+  if (susLabelTimer > 0) {
+    ctx.fillStyle = susCol;
+    ctx.fillText(suspicionSource, mx + mw + 12, my + 10);
+  }
+
+  // noise-makers
+  ctx.fillStyle = '#c9d4e4'; ctx.font = '12px sans-serif';
+  ctx.fillText('Noise-makers: ' + '●'.repeat(Math.max(0, noiseMakers)) + '○'.repeat(Math.max(0, 3 - noiseMakers)), 20, 30);
+
+  // timer
+  ctx.fillStyle = '#c9d4e4';
+  ctx.textAlign = 'right';
+  ctx.fillText(elapsed().toFixed(1) + 's', W - 20, 30);
+  ctx.textAlign = 'left';
+
+  // guard state label (legibility)
+  ctx.fillStyle = 'rgba(200,215,235,0.6)';
+  ctx.font = '11px sans-serif';
+  ctx.fillText(guard.state.toUpperCase(), guard.x - 16, guard.y - 20);
+
+  // ---- End screens ----
+  if (state === 'won') {
+    ctx.fillStyle = 'rgba(6,10,18,0.78)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    if (stats.captures === 0) {
+      ctx.fillStyle = '#ffc168';
+      ctx.font = 'bold 44px sans-serif';
+      ctx.fillText('GHOST RUN', W/2, H/2 - 40);
+      ctx.shadowColor = '#ffc168'; ctx.shadowBlur = 30;
+      ctx.fillText('GHOST RUN', W/2, H/2 - 40);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#e8e2d5';
+      ctx.font = '20px sans-serif';
+      ctx.fillText('The guard never knew you were here.', W/2, H/2 + 6);
+    } else {
+      ctx.fillStyle = '#c9d4e4';
+      ctx.font = 'bold 38px sans-serif';
+      ctx.fillText('ESCAPED', W/2, H/2 - 30);
+      ctx.font = '18px sans-serif';
+      ctx.fillStyle = '#8fa0bf';
+      ctx.fillText(stats.captures + ' capture(s) — clean it up for the GHOST RUN.', W/2, H/2 + 10);
+    }
+    ctx.fillStyle = '#c9d4e4'; ctx.font = '16px sans-serif';
+    ctx.fillText(elapsed().toFixed(1) + 's  ·  ' + stats.throws + ' throw(s)  ·  press R to restart', W/2, H/2 + 60);
+    ctx.textAlign = 'left';
+  }
+  if (state === 'caught') {
+    ctx.fillStyle = 'rgba(6,10,18,0.8)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff5a5a';
+    ctx.font = 'bold 44px sans-serif';
+    ctx.fillText('CAUGHT', W/2, H/2 - 40);
+    ctx.fillStyle = '#e8e2d5';
+    ctx.font = '18px sans-serif';
+    ctx.fillText(lastCatchCause, W/2, H/2 + 6);
+    ctx.fillStyle = '#8fa0bf';
+    ctx.font = '15px sans-serif';
+    ctx.fillText('press R to restart', W/2, H/2 + 44);
+    ctx.textAlign = 'left';
+  }
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

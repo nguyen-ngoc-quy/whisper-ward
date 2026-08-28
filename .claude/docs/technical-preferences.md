@@ -1,0 +1,86 @@
+# Technical Preferences
+
+<!-- Populated by /setup-engine. Updated as the user makes decisions throughout development. -->
+<!-- All agents reference this file for project-specific standards and conventions. -->
+
+## Engine & Language
+
+- **Engine**: Unity 6 LTS (6000.3.17f1)
+- **Language**: C#
+- **Rendering**: URP (Universal Render Pipeline)
+- **Physics**: PhysX (Unity default)
+
+## Input & Platform
+
+<!-- Written by /setup-engine. Read by /ux-design, /ux-review, /test-setup, /team-ui, and /dev-story -->
+<!-- to scope interaction specs, test helpers, and implementation to the correct input methods. -->
+
+- **Target Platforms**: PC (Windows), Web (WebGL demo for portfolio sharing)
+- **Input Methods**: Keyboard/Mouse
+- **Primary Input**: Keyboard/Mouse
+- **Gamepad Support**: Partial (recommended for PC)
+- **Touch Support**: None
+- **Platform Notes**: PC is the primary target. WebGL demo is a build target for portfolio sharing — keep draw calls low for browser performance. All UI must support mouse navigation.
+
+## Naming Conventions
+
+- **Classes**: PascalCase (e.g., `PlayerController`)
+- **Variables**: Public fields/properties PascalCase (e.g., `MoveSpeed`); private fields `_camelCase` (e.g., `_moveSpeed`)
+- **Signals/Events**: PascalCase + `Event` suffix (e.g., `OnPlayerSpotted`)
+- **Files**: PascalCase matching class (e.g., `PlayerController.cs`)
+- **Scenes/Prefabs**: PascalCase matching root (e.g., `FacilityLevel.unity`, `GuardNPC.prefab`)
+- **Constants**: PascalCase (e.g., `MaxSuspicion`, `DefaultMoveSpeed`)
+
+## Performance Budgets
+
+- **Target Framerate**: 60 fps
+- **Frame Budget**: 16.6 ms
+- **Draw Calls**: ~1000 (URP, PC); lower for WebGL target
+- **Memory Ceiling**: TBD — set during profiling
+
+## Testing
+
+- **Framework**: NUnit (Unity Test Framework) — to be confirmed with user before adding
+- **Minimum Coverage**: TBD
+- **Required Tests**: Balance formulas, gameplay systems, AI systems (Behavior Tree, Perception)
+
+## Forbidden Patterns
+
+- [None configured yet — add as architectural decisions are made]
+- See unity-specialist agent for Unity-specific anti-patterns (e.g., `FindObjectOfType`, `SendMessage`, `Resources.Load`)
+
+## Allowed Libraries / Addons
+
+- [None configured yet — add as dependencies are approved]
+- **Approved Unity packages**: URP, Input System (new), Cinemachine, NavMesh, ProBuilder, Unity Test Framework
+
+## Architecture Decisions Log
+
+- [No ADRs yet — use /architecture-decision to create one]
+
+## Engine Specialists
+
+<!-- Written by /setup-engine when engine is configured. -->
+<!-- Read by /code-review, /architecture-decision, /architecture-review, and team skills -->
+<!-- to know which specialist to spawn for engine-specific validation. -->
+
+- **Primary**: unity-specialist
+- **Language/Code Specialist**: unity-specialist (C# review — primary covers it)
+- **Shader Specialist**: unity-shader-specialist (Shader Graph, HLSL, URP materials)
+- **UI Specialist**: unity-ui-specialist (UI Toolkit UXML/USS, UGUI Canvas, runtime UI)
+- **Additional Specialists**: unity-dots-specialist (ECS, Jobs system, Burst compiler), unity-addressables-specialist (asset loading, memory management, content catalogs)
+- **Routing Notes**: Invoke primary for architecture and general C# code review. Invoke DOTS specialist for any ECS/Jobs/Burst code. Invoke shader specialist for rendering and visual effects. Invoke UI specialist for all interface implementation. Invoke Addressables specialist for asset management systems.
+
+### File Extension Routing
+
+<!-- Skills use this table to select the right specialist per file type. -->
+<!-- If a row says [TO BE CONFIGURED], fall back to Primary for that file type. -->
+
+| File Extension / Type | Specialist to Spawn |
+|-----------------------|---------------------|
+| Game code (.cs files) | unity-specialist |
+| Shader / material files (.shader, .shadergraph, .mat) | unity-shader-specialist |
+| UI / screen files (.uxml, .uss, Canvas prefabs) | unity-ui-specialist |
+| Scene / prefab / level files (.unity, .prefab) | unity-specialist |
+| Native extension / plugin files (.dll, native plugins) | unity-specialist |
+| General architecture review | unity-specialist |

@@ -1,0 +1,713 @@
+# Whisper Ward — Entity Registry
+# Cross-system entities and constants. Values are LOCKED herein; downstream GDDs
+# must CONSUME these, never re-declare. Co-owned fields list all owning GDDs.
+# Created: 2026-08-18 (Perception GDD — Phase 5b). Registry conflicts surface
+# immediately per .claude/docs/coding-standards.md.
+
+formula_definitions:
+  - name: accumulator_charge_rate
+    expression: "dA/dt = min(k/d, rate_max)"
+    source: design/gdd/perception.md  # F1
+    output_range: "[0, rate_max] A/s"
+    variables: [k, d, rate_max, T_sample]
+    note: "d is DUAL-MODE (rev 3.1, ADJ-1): path distance in the catch band (Euclidean <= catch_range + 2 m); Euclidean distance in the delta-band (catch_range + 2 m < Euclidean <= R_vis) with R3 navmesh-sample reachability — no path query runs in the delta-band (F1/R1 closure). d metric pin (rev 3.3, J2): guard-feet -> sampled-player-feet CENTER-TO-CENTER path length; the player is NOT a carved NavMeshObstacle (blocked-destination corners at the capsule edge would shrink d by up to r_player against delta_reach 0.02); pinned in the Technical-Setup sensing ADR"
+
+  - name: entry_threshold
+    expression: "T_entry(R) = max(T_base - k_res*R, T_floor)"
+    source: design/gdd/perception.md  # F5
+    output_range: "[0.04, 0.40] full-knob domain (T_floor min 0.2×0.20 = 0.04 .. T_base max 0.40 at R=0); starter slice [0.06, 0.30]"
+    variables: [T_base, k_res, R, T_floor]
+    note: "rev 3.6 (CR-FSM-01): Guard AI FSM consumes this formula as its hide-entry tier gate — alias T_hide_entry (renamed to avoid symbol collision with the FSM's former unsourced T_entry); the FSM evaluates T_hide_entry(R) = T_entry(R) at the last pre-break sight tick and compares the LOS-break fact's a_pre_break against threshold_applied (both fields on the hide-dive break event). Domain corrected rev 3.7 (review #4 S4): the derived FULL-KNOB domain is [0.04, 0.40]; [0.06–0.30] is the starter-config slice only — band-checking consumers must use [0.04, 0.40] or they reject/clamp legal configs."
+    consumed_by: [Perception GDD, Suspicion/Grade GDD, Guard AI FSM GDD]
+
+  - name: residual_decay
+    expression: "R(t) = R(t0) * exp(-(t-t0)/tau_res)"
+    source: design/gdd/perception.md  # F4
+    output_range: "[0, R_max]"
+    variables: [R, tau_res]
+
+  - name: giveup_timeout
+    expression: "t_giveup = t_giveup_base * s_diff * (1 + k_thorough * R/R_max)"
+    source: design/gdd/perception.md  # F8
+    output_range: "[2.45, 16.0] s (full knob domain); starter band [4.0, 6.0] s (base 4.0 × s_diff 1.0 × (1 + k_thorough·R/R_max), R ∈ [0, R_max])"
+    variables: [t_giveup_base, s_diff, k_thorough, R, R_max]
+
+  - name: catch_range_invariant
+    expression: "catch_range > V_run*T_sample_max + hyst + r_guard + r_player + stopping_distance"
+    source: design/gdd/perception.md  # F10
+    output_range: "max-of-band 5.05 m < 5.5 m; catch_range floor 5.2 m"
+    variables: [catch_range, V_run, T_sample_max, hyst, r_guard, r_player, stopping_distance]
+    note: "rev 3.3 (J8): r_guard/r_player are LOCKED constants (0.40/0.35, no safe range — the F10 formula-table operand bands [0.35,0.45]/[0.30,0.40] were stale knob-form and were struck rev 3.3); max-of-band = 7.2*0.5 + 0.7 + 0.40 + 0.35 = 5.05 m. The 5.2 floor is conservative: true margin over max-of-band at the floor is 0.15 m. Every config-time AC reads these constants, never formula-table operand bands."
+
+  - name: chase_speed_ratio
+    expression: "V_chase >= 1.10 * V_run(runtime max); starter V_chase = rho_chase * V_run"
+    source: design/gdd/perception.md  # F11 (rev 3.2 — V_run overload: runtime-max, starboard V_chase floor 7.92 at band max 7.2)
+    output_range: "V_chase >= 7.92 m/s at V_run band max 7.2; starter 6.25 * 1.20 = 7.50 m/s"
+    variables: [V_chase, V_run, rho_chase]
+    note: "rev 2026-08-26 (/consistency-check G3 reconciliation): starter V_chase 7.50 is PINNED ABSOLUTE per player-third-person-controller.md :321 — the product form above is the HISTORICAL DERIVATION + coordinated-retune rule only; V_chase does NOT auto-scale with V_run. Solo-tuning ceiling V_run <= 6.81 (= 7.50/1.10, see V_run note rev 2026-08-25); crossing it requires a coordinated V_chase retune re-passing this invariant. The '>= 7.92 at band max' line is the requirement AT that corner if ever reached via coordinated retune — not an automatic consequence."
+
+constants:
+  - name: T_base
+    value: 0.30
+    safe_range: "[0.20, 0.40]"
+    source: design/gdd/perception.md  # F5; prototype-validated
+    consumed_by: [Perception GDD, Suspicion/Grade GDD]
+
+  - name: T_chase
+    value: 1.00
+    safe_range: "[0.85, 1.00]"  # ≡ A_max — meter scale caps the threshold; > 1.00 is unreachable by the accumulator
+    alias_of: A_max
+    source: design/gdd/perception.md  # F1/F2/F9; prototype-validated
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: T_floor
+    value: 0.06  # starter value at T_base 0.30 — the LOCK is the relation, not a literal
+    locked: true  # C-6 pin: floor is NOT a knob
+    relation: "T_floor = 0.2 * T_base (derived; value moves with T_base — [0.04, 0.08] across the T_base domain)"
+    derived: true
+    source: design/gdd/perception.md  # F5
+    consumed_by: [Perception GDD, Suspicion/Grade GDD]
+
+  - name: forgiveness_floor
+    value: 0.030  # recommended starter; owned by Suspicion/Grade GDD
+    safe_range: "DERIVED band [0.05*T_base, 0.2*T_base) — starter [0.015, 0.06), rec 0.030"  # upper edge = T_floor equality forbidden; band tracks the derived T_floor
+    constraint: "0 <= forgiveness_floor < T_floor (T_floor = 0.2*T_base, dynamic [0.04, 0.08]); margin (T_floor - ff) in (0, 0.15*T_base]"
+    source: design/gdd/perception.md  # F15 (revision 3 — floor is derived, not literal)
+    owned_by: "Suspicion/Grade GDD (co-sign)"
+    consumed_by: [Perception GDD, Suspicion/Grade GDD]
+
+  - name: k
+    value: 1.50
+    safe_range: "[1.0, 2.0]"
+    source: design/gdd/perception.md  # F1
+    consumed_by: [Perception GDD]
+
+  - name: rate_max
+    value: 0.60
+    safe_range: "[0.40, 0.80]"
+    source: design/gdd/perception.md  # F1
+    consumed_by: [Perception GDD]
+
+  - name: r_res
+    value: 0.10
+    safe_range: "[0.05, 0.15]"
+    source: design/gdd/perception.md  # F3
+    consumed_by: [Perception GDD]
+
+  - name: tau_res
+    value: 16  # s
+    safe_range: "[12, 20] s"
+    source: design/gdd/perception.md  # F4
+    consumed_by: [Perception GDD]
+
+  - name: k_res
+    value: 0.24
+    safe_range: "[0.15, 0.30]"
+    source: design/gdd/perception.md  # F5
+    consumed_by: [Perception GDD]
+
+  - name: R_max
+    value: 1.00
+    safe_range: "[0.5, 1.0]"
+    source: design/gdd/perception.md  # F3/F9
+    consumed_by: [Perception GDD, Suspicion/Grade GDD, Guard AI FSM GDD]  # FSM D1 t_giveup(R) + t_hide_entry(R) derivation consume R_max (rev 3.6 lock-step)
+
+  - name: t_win
+    value: 1.2  # s
+    safe_range: "[1.0, 2.0] s"
+    constraint: "t_win >= 2 * T_sample_max (locked floor 1.0 s); t_win < t_giveup"
+    source: design/gdd/perception.md  # F7
+    consumed_by: [Perception GDD]
+
+  - name: t_giveup_base
+    value: 4.0  # s; prototype-validated
+    safe_range: "[3.5, 5.0] s"
+    source: design/gdd/perception.md  # F8
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: t_giveup_chase
+    value: 8.0  # s — chase give-up window (FSM-owned; used in AC-F14 chain)
+    safe_range: "[6, 10] s"
+    source: design/gdd/perception.md  # Section G / F14 (lock-step with GDD knob 6–10 s)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: t_cap_chase
+    value: 30  # s — cap-forced chase window (FSM-owned)
+    safe_range: "[20, 40] s"
+    source: design/gdd/perception.md  # Section G / F14 (lock-step with GDD knob 20–40 s)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: n_resight_cap
+    value: 2
+    safe_range: "[1, 3]"  # a count, not a duration (AC-F14(2))
+    source: design/gdd/perception.md  # Section G / F14/R15 (lock-step with GDD knob 1–3)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: t_resight_min
+    value: 1.0  # s — minimum between re-sights (FSM-owned)
+    safe_range: "[1.0, 1.5] s (floor locked 2 x T_sample_max = 1.0 s, F14(2))"
+    constraint: "T_sample_max < t_resight_min < t_giveup_chase < t_cap_chase (AC-F14 chain); floor 2 x T_sample_max locked (0.8 violates the locked floor)"
+    source: design/gdd/perception.md  # Section G / F14 (lock-step with GDD knob 1.0–1.5 s)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: k_thorough
+    value: 0.50
+    safe_range: "[0.25, 1.0]"
+    source: design/gdd/perception.md  # F8
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: s_diff
+    value: 1.0
+    safe_range: "[0.7, 1.6]"
+    source: design/gdd/perception.md  # F8
+    consumed_by: [Perception GDD, Guard AI FSM GDD]  # FSM D1 t_giveup(R) consumes s_diff (rev 3.6 lock-step)
+
+  - name: T_sample
+    value: 0.5  # s (2-5 Hz tick; starter 2 Hz worst-case)
+    safe_range: "[0.2, 0.5] s"
+    note: "VISION (LOS) cadence bound (rev 2026-08-27, B8): hearing reaction is bounded by T_hearing below, not T_sample — the vision tick stays 2-5 Hz while a dedicated 5 Hz hearing sub-evaluation runs additive to it."
+    source: design/gdd/perception.md  # R1/F2/F7
+    consumed_by: [Perception GDD, Guard AI FSM GDD, Player Controller GDD, NavMesh GDD]
+
+  - name: T_hearing
+    value: 0.2  # s — worst-case hearing-reaction bound, 5 Hz sub-eval cadence (rev 2026-08-27, B8)
+    safe_range: "[0.1, 0.3] s"
+    note: "Hearing reaction is a 5 Hz staircase, not uniform: t_audible = t_commit + n·T_hearing for n ∈ {0, 1} at the starter 5 Hz quantum, bounded by T_hearing. Perception runs the hearing sub-evaluation additively to the 2-5 Hz vision tick; exact timestamp equality at commit is valid when the event lands on a due sub-eval."
+    source: design/gdd/player-noise.md  # CR9/F2 (re-review rev 2026-08-27); perception.md F12/tick-authority amendment
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Perception GDD, Player Noise GDD, Guard AI FSM GDD]
+
+  - name: T_sample_max
+    value: 0.5  # s (worst case)
+    source: design/gdd/perception.md  # F7/F10/F14
+    consumed_by: [Perception GDD, Guard AI FSM GDD, Player Controller GDD]
+
+  - name: t_catch
+    value: 1.0  # s
+    safe_range: "[1.0, 1.2] s"  # floor locked: 2 * T_sample_max = 1.0 s (F14(8)); 0.6 was a violation
+    constraint: "t_catch >= 2 * T_sample_max (locked 1.0) ; t_catch < t_giveup (min 2.45)"
+    source: design/gdd/perception.md  # F14(3)/(8)
+    owned_by: "Guard AI FSM GDD (Joint)"
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: catch_range
+    value: 5.5  # m
+    safe_range: "[5.2, 6.5] m"  # floor = max-of-band 5.05 (F10, rev 3.3); 5.0 violates the strict invariant
+    constraint: "catch_range > V_run*T_sample_max + hyst + r_guard + r_player + stopping_distance (max-of-band 5.05 m); catch_range >= 5.2"
+    source: design/gdd/perception.md  # F10 (C-6 re-validation venue)
+    owned_by: "Systems GDD (re-validation gate); Guard AI FSM GDD (execution)"
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: V_run
+    value: 6.25  # m/s design value; runtime-max = the maximum speed reachable in the Player Controller's action set, NOT a fixed design number — the band pins the SAME lane as V_chase/V_run >= 1.10 (rev 3.2, F11)
+    safe_range: "[5.0, 7.2] m/s pinned band"
+    constraint: "V_chase >= 1.10 * V_run(runtime max) — kiting red-line (F11, rev 3.2); at band max 7.2 this means V_chase >= 7.92"
+    note: "rev 2026-08-25 (Player Controller F2, Round-2 arithmetic correction): runtime-max DECLARED = 6.25 m/s — the committed action set contains no speed modifiers (diagonal normalized, backpedal_factor <= 1, slew cannot overshoot, no buff channel); any future speed-raising feature must re-declare AND re-run chase/catch invariants in the same changeset. Solo-tuning ceiling 6.81 m/s (safe rounded-down bound from V_chase starter 7.50 / 1.10 = 6.818...): raising V_run above it requires a coordinated V_chase retune re-passing the chase invariant."
+    source: design/gdd/perception.md  # F10/F11
+    owned_by: "Player Controller GDD"
+    consumed_by: [Perception GDD, Player Controller GDD, Guard AI FSM GDD, NavMesh GDD]
+
+  - name: V_patrol
+    value: 2.3  # m/s
+    safe_range: "[2.0, 2.8] m/s"
+    constraint: "V_patrol < V_investigate <= V_run (ordering; V_investigate is the chase approach override)"
+    source: design/gdd/perception.md  # Section G (lock-step with GDD knob 2.0–2.8)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: V_investigate
+    value: 5.0  # m/s
+    safe_range: "[4.5, 5.5] m/s"
+    constraint: "V_patrol < V_investigate <= V_run"
+    note: "JOINT-COUPLING (rev 3.3, J8): the three independent safe ranges admit legal corners violating the ordering (e.g. V_investigate 5.5 with V_run 5.0) — the joint constraint must hold in EVERY config and is enforced by the AC-F14(9) joint-coupling leg; V_run's floor 5.0 is the binding upper bound on V_investigate's range"
+    source: design/gdd/perception.md  # Section G (lock-step with GDD knob 4.5–5.5)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: V_chase
+    value: 7.50  # m/s starter config
+    safe_range: "pinned starter — no auto-scale band; any coordinated retune must satisfy V_chase >= 1.10 * V_run(runtime max)"
+    constraint: "PINNED ABSOLUTE at 7.50 (rev 2026-08-26 /consistency-check G3 reconciliation): does NOT auto-scale with V_run — historical derivation 1.20 * 6.25 non-operative (player-third-person-controller.md :321). Solo-tuning ceiling V_run <= 6.81 (= 7.50/1.10, see V_run note); crossing it requires a coordinated V_chase retune re-passing the chase invariant."
+    source: design/gdd/guard-ai-fsm.md  # D4 tuning table ("Consumed, never re-derived")
+    consumed_by: [Guard AI FSM GDD, Player Controller GDD]
+
+  - name: FOV
+    value: 100  # degrees — sensing cone, inclusive (E2)
+    safe_range: "[90, 110] deg"
+    source: design/gdd/perception.md  # Section G / R2 (lock-step with GDD knob 90–110)
+    consumed_by: [Perception GDD, Level GDD]
+
+  - name: delta_FOV_rendered
+    value: 5  # degrees — rendered-cone bias margin (sensing cone + 5 deg rendered, AC-R2b)
+    safe_range: "[2, 8] deg"
+    constraint: "delta_FOV_rendered >= 5 deg committed starter (phase-locked flicker bound, AC-R2d/ADJ-5) — legal range includes 2–4 deg legally-visible-but-not-committed; the committed 5 deg starter satisfies the >=5 floor"
+    source: design/gdd/perception.md  # Section G / R2b/R2d (lock-step with GDD knob 2–8)
+    consumed_by: [Perception GDD]
+
+  - name: rho_chase
+    value: 1.20
+    safe_range: "[1.10, 1.35]"
+    constraint: "rho_chase > 1.0 (hard kiting red-line); V_chase = rho_chase * V_run(runtime max) (rev 3.2 — F11 overload: V_chase is defined against the runtime-max V_run, so the band's lowest rho 1.10 at band-max 7.2 still floors V_chase >= 7.92)"
+    note: "rev 2026-08-26 (/consistency-check): see chase_speed_ratio note — the product form is the coordinated-retune sizing rule only; starter V_chase 7.50 is PINNED ABSOLUTE, no auto-scale (player-third-person-controller.md :321). rho_chase remains the sizing ratio for any future joint retune."
+    source: design/gdd/perception.md  # F11
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: hyst
+    value: 0.5  # m
+    safe_range: "[0.3, 0.7] m"
+    source: design/gdd/perception.md  # F10
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: r_guard
+    value: 0.40  # m — guard collision radius used in the F10 catch-range invariant
+    locked: true  # rev 3.3 (J8): no safe range — the F10 formula-table operand band [0.35, 0.45] was stale knob-form and was struck
+    source: design/gdd/perception.md  # F10 (rev 3.2 — declared operand of catch_range_invariant; operand band struck rev 3.3)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: r_player
+    value: 0.35  # m — player collision radius used in the F10 catch-range invariant
+    locked: true  # rev 3.3 (J8): no safe range — the F10 formula-table operand band [0.30, 0.40] was stale knob-form and was struck
+    source: design/gdd/perception.md  # F10 (rev 3.2 — declared operand of catch_range_invariant; operand band struck rev 3.3)
+    consumed_by: [Perception GDD, Player Controller GDD, Guard AI FSM GDD]
+
+  - name: stopping_distance
+    value: 0  # m — locked; NavMeshAgent stops at the destination surface
+    locked: true
+    source: design/gdd/perception.md  # F10 (rev 3.2 — declared operand of catch_range_invariant; NavMeshAgent default)
+    consumed_by: [Perception GDD, Guard AI FSM GDD, NavMesh GDD]
+
+  - name: R_noise_share
+    value: 0.15
+    safe_range: "[0.10, 0.25]"
+    constraint: "per-event add = min(R_noise_share, c_noise) (AC-F6) — the EFFECTIVE per-event cap is the smaller, so no literal c_noise <= R_noise_share ordering is required (rev 3.3, J8: at starter c_noise 0.20 > R_noise_share 0.15, so the SHARE is the binding constraint by design; the per-event cap binds only when R_noise_share is tuned above c_noise; AC-F6 asserts effective add <= R_noise_share); R + sum(effective add) <= R_max (bounded-share clamping, AC-R10)"
+    source: design/gdd/perception.md  # Section G / F6 (lock-step with GDD knob 0.10–0.25)
+    consumed_by: [Perception GDD]
+
+  - name: c_noise
+    value: 0.20
+    safe_range: "[0.15, 0.30]"
+    source: design/gdd/perception.md  # Section G / F6 (lock-step with GDD knob 0.15–0.30)
+    consumed_by: [Perception GDD]
+
+  - name: R_vis
+    value: 12.0  # m
+    safe_range: "[10, 15] m"
+    note: "conversion anchor for noise radii (m_per_px = 0.0511)"
+    source: design/gdd/perception.md  # F13
+    consumed_by: [Perception GDD, Player Noise GDD, Level GDD]
+
+  - name: delta_reach
+    value: 0.02
+    safe_range: "[0.005, 0.05]"
+    source: design/gdd/perception.md  # F2
+    consumed_by: [Perception GDD]
+
+  - name: delta_y_tolerance
+    value: 1.0  # m — |ΔY| tolerance on the unified reachability fact (rev 3.3, J2): same-surface requires the sampled-player height within this band of the guard's navmesh surface; bounds the ledge/mid-climb livelock (E4)
+    safe_range: "[0.5, 2.0] m"
+    note: "VISION/CATCH gate only (rev 2026-08-27, B10) — DISTINCT from hearing_y_hard_cutoff below (the hearing soft vertical attenuation domain)."
+    source: design/gdd/perception.md  # rev 3.3 R1/R15/E4 (J2)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: hearing_y_hard_cutoff
+    value: 4.0  # m — hard cutoff of the soft Y-delta hearing falloff (rev 2026-08-28): full radius at ΔY = 0, linearly attenuated to zero at |ΔY| = 4.0 m; beyond it remains silent. DISTINCT from delta_y_tolerance 1.0 (vision/catch reachability gate)
+    safe_range: "[3, 5] m"
+    note: "Soft vertical leg: R_eff = R_noise(kind) × max(0, 1 − |ΔY| / hearing_y_hard_cutoff); hearing uses planar XZ d_noise ≤ R_eff plus the binary E20 Linecast. The name is a hard cutoff for the attenuation domain, not a hard gate at the boundary."
+    source: design/gdd/player-noise.md  # CR5/E16 (re-review rev 2026-08-27); perception.md F12 amendment
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Perception GDD, Player Noise GDD]
+
+  - name: cls_displacement_deadzone
+    value: 0.10  # m — classifier displacement dead-zone on the R3 perceived position (rev 3.3, J4): breaks with perceived displacement <= this count as stationary
+    safe_range: "[0.05, 0.20] m"
+    source: design/gdd/perception.md  # rev 3.3 R7 (J4 — classifier basis pin)
+    consumed_by: [Perception GDD]
+
+  - name: cls_sweep_yaw
+    value: 5.0  # deg — classifier guard-sweep threshold: cumulative-ABSOLUTE guard-head yaw change during the window must exceed this (net rotation rejected); feel-linked to delta_FOV_rendered in legibility docs
+    safe_range: "[3.0, 8.0] deg"
+    source: design/gdd/perception.md  # rev 3.3 R7 (J4)
+    consumed_by: [Perception GDD]
+
+  - name: navmesh_sample_maxdistance
+    value: 0.4  # m — NavMesh.SamplePosition maxDistance for the R3 same-surface sample (rev 3.3, J7): >= max authorable navmesh-free lip 0.30 m + margin; < gap to any non-adjacent walkable surface 0.5 m
+    locked: true  # engine-pinned (Unity 6 6000.3), declared per R3
+    source: design/gdd/perception.md  # rev 3.3 R3/AC-R3 (J7)
+    consumed_by: [Perception GDD, NavMesh GDD, Guard AI FSM GDD]  # FSM consumes the same-surface conjunct of the unified reachable fact via the Reachability event (rev 3.6 lock-step)
+
+  - name: f12_noise_origin_offset
+    value: 0.25  # m — F12 hearing ray origin above the feet (rev 3.3, J7): raised 0.15 -> 0.25 m so the ray clears a 0.20 m stair riser at close range (no graze-block); stair/30°-slope probes assert in AC-F12
+    source: design/gdd/perception.md  # rev 3.3 F12/AC-F12 (J7)
+    owned_by: "Player Noise GDD (co-sign)"
+    consumed_by: [Perception GDD, Player Noise GDD]
+
+  - name: n_cancel_cap
+    value: 3
+    safe_range: "[2, 5]"
+    notes: |-
+      Counts player-caused window-cancels only (rev 3.1, ADJ-2): causal class peek-out increments; guard-sweep breaks are sweep-excluded — the machine's own motion never accrues a witnessed evasion; hide-dive supersedes to the hide-entry path, never double-counts.
+      Surfaced as pips on the meter's residual side; a pip's fade waives its count with it (rev 3.1, ADJ-3 decay-together/waive-out) — the cap structurally cannot fire dark (counter >= cap with all pips faded is impossible); residual-consistent decay, segment-end clears both.
+      Reset: only on sight-committed Investigate/Chase commit or the cap-forced Investigate; noise/alert Investigates do NOT reset (adjudicated 2026-08-18).
+      Cap-forced Investigate is non-grading (D1 never-count clause extension).
+    source: design/gdd/perception.md  # R11 (peek-exploit closer)
+    consumed_by: [Perception GDD, Guard AI FSM GDD]
+
+  - name: t_sweep_postchase
+    value: 2.0  # s — post-Chase LKP sweep duration (give-up w/o capture → short Investigate-style sweep at LKP, then Patrol; AC-FSM-9)
+    safe_range: "[1.5, 3.0] s (>= 2 x T_sample_max 1.0 s floor; < t_giveup_chase 8.0 s)"
+    source: design/gdd/guard-ai-fsm.md  # D3 / G / AC-FSM-9 (FSM-owned, registered Phase 5 2026-08-18)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: t_sweep_base
+    value: 0.8  # s — FIXED per-arc sweep duration for the Investigate look-around; NOT scaled by tau (rev 3.6 D3: thoroughness scales the COUNT axis; lowered rev 3.7, user-approved, so performed arcs = min(ceil(n_sweep_ref x tau), floor(t_giveup / t_sweep_base)) manifests monotonically across the residual range at starter)
+    safe_range: "[0.6, 1.0] s; per-arc constraint t_sweep_base < t_giveup_base (band-min 3.5 s) is the ONLY config-time assert — per-episode containment is runtime enforcement via the D3 truncation clause (rev 3.7 venue resolution: a per-episode config assert is non-evaluable against runtime R)"
+    source: design/gdd/guard-ai-fsm.md  # D3 / G (FSM-owned, registered Phase 5 2026-08-18; comment corrected rev 3.6; value + range rewritten rev 3.7)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: t_dwell_i
+    value: "Level-authored"  # per-route waypoint dwell at node i; authored by Level GDD
+    safe_range: "Level-authored (route-consuming guard stays within the dwell budget)"
+    source: design/gdd/guard-ai-fsm.md  # D6 / G (FSM-owned waypoint-node knob, registered Phase 5 2026-08-18)
+    owned_by: "Level / Content GDD"
+    consumed_by: [Guard AI FSM GDD, Level GDD]
+
+  - name: t_scan_i
+    value: "Level-authored"  # per-route waypoint scan-arc span at node i; authored by Level GDD
+    safe_range: "Level-authored (scan arcs at dwell points only, never mid-transit — C1.1 legibility)"
+    source: design/gdd/guard-ai-fsm.md  # D6 / G (FSM-owned waypoint-node knob, registered Phase 5 2026-08-18)
+    owned_by: "Level / Content GDD"
+    consumed_by: [Guard AI FSM GDD, Level GDD]
+
+  # --- Guard AI FSM knobs, rev 3.6 revision round (registered 2026-08-22) ---
+
+  - name: margin
+    value: 0.5
+    safe_range: "[0.25, 0.5] m"
+    constraint: "JOINT (config-time assert in the FSM config loader): margin <= hyst — the Chase-exit confirmation margin may never exceed the entry hysteresis or exit would be more eager than entry"
+    source: design/gdd/guard-ai-fsm.md  # D7 (rev 3.6 — previously an unregistered literal)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: r_investigate_error
+    value: 1.5
+    safe_range: "[1.0, 2.5] m"
+    note: "Single shared error radius applied to noise/alert/cap-forced commit targets ONLY (rev 3.6); threshold/sight/hide-entry committed targets are exact — no second knob is introduced"
+    source: design/gdd/guard-ai-fsm.md  # C1.2 (rev 3.6 — error radius defined; previously implicit/undefined)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: n_sweep_ref
+    value: 4
+    locked: true  # thoroughness reference count — the LOCK is the relation n_sweep = ceil(n_sweep_ref x tau), not a dial
+    note: "Count axis of the tau thoroughness scaling (rev 3.6 D2): n_sweep(R) = ceil(n_sweep_ref x tau); arc duration stays fixed at t_sweep_base"
+    source: design/gdd/guard-ai-fsm.md  # D2 (rev 3.6)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: t_spotfront_verify
+    value: 1.5
+    safe_range: "[1.0, 2.5] s"
+    note: "Confirm-empty verification dwell at the hide-spot front for WITNESSED-ENTRY episodes on either tier (rev 3.6; either-tier + single-clock capture semantics rev 3.8/3.9): on dwell completion with no reach-presence gate pass, the hold resolves empty — Chase-tier: Chase-end -> Patrol; witnessed Investigate-tier: investigate-resolution cause=fruitless (seeds the F6 share, rev 3.9); capture fires on the single-clock condition behind dwell completion"
+    source: design/gdd/guard-ai-fsm.md  # C1.3 spot-front hold (rev 3.6)
+    consumed_by: [Guard AI FSM GDD]
+
+  # --- Guard AI FSM knobs, rev 3.9 revision round (registered 2026-08-24) ---
+
+  - name: t_pathend_suppress_max
+    value: 1.0  # s
+    safe_range: "[0.5, 2.0] s; constraint < t_giveup_base (band-min 3.5 s)"
+    note: "Path-end arming-suppression force-arm fallback (rev 3.9 C1.2): after this much continuous suppression since the destination re-issue, the path-end arm force-fires regardless of hasPath/pathPending/destination state — fail-open toward give-up, never infinite suppression of the search budget start"
+    source: design/gdd/guard-ai-fsm.md  # C1.2 path-end predicate (rev 3.9)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: t_route_budget_max
+    value: 90
+    safe_range: "[45, 180] s"
+    note: "PROVISIONAL starter — final ownership transfers to the Level / Content GDD (route period guard provenance corrected rev 3.6). Config-time assert: route period <= this budget; also guards minimum period (nonempty route)"
+    source: design/gdd/guard-ai-fsm.md  # D6 (rev 3.6)
+    owned_by: "Level / Content GDD (final)"
+    consumed_by: [Guard AI FSM GDD, Level GDD]
+
+  # --- Guard AI FSM knobs, rev 3.7 revision round (registered 2026-08-22) ---
+
+  - name: eps_arrive
+    value: 0.3  # m
+    safe_range: "[0.2, 0.5] m"
+    note: "Arrival predicate tolerance (rev 3.7 C1.2): XZ distance to the navmesh-sampled target OR the spot-front hold position at a tick boundary — the arrival arm of the min(arrival, path-end) give-up clock start"
+    source: design/gdd/guard-ai-fsm.md  # C1.2 / D1 (rev 3.7)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: eps_stop
+    value: 0.1  # m
+    safe_range: "[0.05, 0.2] m"
+    note: "Path-end predicate leg (rev 3.7 C1.2): agent remainingDistance <= stopping_distance + eps_stop; never fires alone — conjunction with v_stop_eps and n_pathend_ticks is the anti-flake pin"
+    source: design/gdd/guard-ai-fsm.md  # C1.2 / D1 (rev 3.7)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: v_stop_eps
+    value: 0.1  # m/s
+    safe_range: "locked"
+    note: "Path-end predicate leg (rev 3.7 C1.2): agent speed threshold"
+    source: design/gdd/guard-ai-fsm.md  # C1.2 / D1 (rev 3.7)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: n_pathend_ticks
+    value: 2
+    safe_range: "locked"
+    note: "Consecutive ticks the path-end conjunction must hold before the arm fires (rev 3.7 C1.2 anti-jitter pin)"
+    source: design/gdd/guard-ai-fsm.md  # C1.2 / D1 (rev 3.7)
+    consumed_by: [Guard AI FSM GDD]
+
+  - name: spot_front_anchor
+    value: "Level/hide-system-authored per hide spot"  # world position on the spot's approachable face
+    safe_range: "Authored datum — must lie on a guard-reachable surface adjacent to the spot zone (hide-spot certification pins)"
+    note: "Spot-front hold position datum (rev 3.7 C1.3): guard holds at anchor offset outward along the approach vector by guard-radius standoff; defines 'reached the spot front' together with eps_arrive"
+    source: design/gdd/guard-ai-fsm.md  # C1.3 (rev 3.7)
+    owned_by: "Level / hide system (authored per spot)"
+    consumed_by: [Guard AI FSM GDD, Level GDD, Hide System GDD]
+
+  - name: interior_position
+    value: "Level/hide-system-authored per hide spot"  # the spot's reference point the player occupies while hidden
+    safe_range: "Authored datum — must satisfy D1 reach-resolvability + D2 vertical margin against the worst-case guard floor (player-movement-hide hostage pins)"
+    note: "HideSpot interior reference (player-movement-hide #5 D1/D2, rev 2026-08-26): the static datum the FSM's HideSpotFront catch-gate resolves reach-presence against (NOT the player's live feet). Depth/offset must satisfy the D1 OR-invariant (path leg OR occlusion-clear backstop) and the D2 strict authoring margin below delta_y_tolerance; asserts against proxy(interior_position), never raw spot_position. D1 REVISION 2026-08-26 (review Blk-2): the D1 certification bound is catch_range (5.5) — NOT catch_range + margin (6.0), which is the FSM's retained-accrual/pause bound. A leg at (5.5, 6.0] is certifiable under the retired bound but never engages the catch timer (capture-immunity stalemate)."
+    source: design/gdd/player-movement-hide.md  # D1/D2 (rev 2026-08-26)
+    owned_by: "Level / hide system (authored per spot)"
+    consumed_by: [Guard AI FSM GDD, Level GDD, Hide System GDD]
+
+  - name: auth_margin
+    value: 0.2
+    safe_range: "[0.1, 0.4] m"
+    note: "D2 vertical authoring margin (player-movement-hide #5, rev 2026-08-26): offset(interior, floor_worst) < delta_y_tolerance − auth_margin. Larger = safer against lazy authoring but rejects more spot geometry; smaller = permissive but risks over-tolerance spots reaching the gate (capture-immunity). The milestone-0 gate asserts the committed |ΔY| value; margin may re-up after first level blockout"
+    source: design/gdd/player-movement-hide.md  # D2 / Section G
+    consumed_by: [Hide System GDD, Level GDD]
+
+  # --- Player Third-Person Controller knobs (registered Phase 5b 2026-08-22) ---
+
+  - name: V_crouch
+    value: 1.8  # m/s
+    safe_range: "[1.4, 2.2] m/s"
+    constraint: "JOINT (config-time assert in the H.0.7 validator / AC-P18): V_crouch < V_patrol in EVERY config — the independent bands admit violating corners (2.2 >= V_patrol band-min 2.0), so this is asserted at load, not band-pinned; a crouching player can never outrun even a patrolling guard on open ground (risk-ladder leg). Rev 2026-08-24 (controller review round 1, B6): replaced the unsatisfiable 'across full bands' claim with the joint-assert form."
+    source: design/gdd/player-third-person-controller.md  # F1 / Section D
+    consumed_by: [Player Controller GDD]
+
+  - name: V_walk
+    value: 3.6  # m/s
+    safe_range: "[3.2, 4.4] m/s"
+    constraint: "JOINT (bands-pinned): V_walk < V_investigate in EVERY config — band top 4.4 pinned against V_investigate band-minimum 4.5; prevents walk from being a dominant strategy (near-run mobility, smaller noise ring, zero escalation risk). Gear-shift perceptibility: shipped starters give walk = 2.0x crouch, but the worst LEGAL corner across independent bands is ~1.45x (3.2/2.2) — the former '>= 1.6x across bands' claim was unsatisfiable. Cadence is a HARD joint constraint (rev 2026-08-28): V_walk / stride_length_walk <= V_run / stride_length_run in every loaded config; the config loader rejects an inversion before play, and the load report records the evaluated ratios for the Pillar-2 audit."
+    source: design/gdd/player-third-person-controller.md  # F1/F5 / Section D
+    consumed_by: [Player Controller GDD, Player Noise GDD]
+
+  - name: backpedal_factor
+    value: 0.70
+    safe_range: "[0.60, 0.80]"
+    constraint: "backpedal_factor in (0, 1] — BOTH bounds are H.0.7 validator legs (round 4): ceiling > 1 would push backward run past the F2 runtime-max declaration and silently falsify the sup (leg added round 3); floor <= 0 would silently kill backpedaling or invert speed outside the declared v_eff range [0, V_run] (leg added round 4). Backpedal gains distance only DURING the damped reversal window (facing converges within ~T_reverse ~= 0.83 s at starters per F3) and never enables kiting (turn-and-sprint strictly better); part of the F2 empty-modifier-product runtime-max proof"
+    source: design/gdd/player-third-person-controller.md  # F1
+    consumed_by: [Player Controller GDD]
+
+  - name: eps_d
+    value: 0.0001
+    safe_range: "locked"
+    constraint: "fixed positive comparison epsilon for the C3 backpedal speed boundary; dot < -eps_d applies f_back, dot >= -eps_d uses full speed. F3 turn damping remains continuous through dot = 0."
+    source: design/gdd/player-third-person-controller.md  # F1/E2
+    consumed_by: [Player Controller GDD]
+
+  - name: turn_rate
+    value: 360  # deg/s
+    safe_range: "[300, 480] deg/s"
+    source: design/gdd/player-third-person-controller.md  # F3
+    consumed_by: [Player Controller GDD]
+
+  - name: accel_time
+    value: 0.08  # s
+    safe_range: "[0.04, 0.10] s (domain 0 < x <= 0.10 — hard <= 0.10 C5 responsiveness contract; floor > 0 because a_max = V_run/accel_time divides)"
+    note: "SHARED knob: drives both the speed slew rate (a_max = V_run/accel_time) and the crouch capsule blend (F4 gamma). Split into a dedicated crouch_time only if playtesting demands stance-weight independence. Domain bound enforced by the config validator (AC-P18 leg)."
+    source: design/gdd/player-third-person-controller.md  # F1/F4/C5
+    consumed_by: [Player Controller GDD]
+
+  - name: h_stand
+    value: 1.80  # m
+    safe_range: "[1.70, 1.90] m"
+    constraint: "JOINT config-time assert in the H.0.7 validator / AC-P18 leg (rev round-6): h_stand > h_crouch — a corrupted h_stand would desync the Guard catch-gate Linecast endpoint operand and Perception's 1.6 m stand-pinned ray origin with no loud failure; bands alone are advisory."
+    source: design/gdd/player-third-person-controller.md  # F4
+    consumed_by: [Player Controller GDD, Perception GDD]
+
+  - name: h_crouch
+    value: 0.95  # m
+    safe_range: "[0.85, 0.95] m"
+    constraint: "h_crouch < 1.0 HARD (validator-enforced, AC-P11) — keeps the crouched capsule under sub-1.0 m cover geometry with margin; Rev 2026-08-26 (controller review round 4): safe_range top capped from 0.99 to 0.95 — the honest working-range top — so even a band-top config retains >= 0.05 m real margin below sub-1.0 m cover (a 0.96-0.99 value sits inside contact-offset scale, effectively zero margin). Rev 2026-08-24 (controller review round 1, B1): the former k_eye-ratio ray guarantee is STRUCK — Perception consumes the controller's published BINARY stance flag (flip at gamma 0.5) to select its OWNED pinned eye offsets (crouch 0.5 / stand 1.6), so end-to-end concealment is verified in integration tests against the live perception stack, not from h_cap arithmetic. Hide-spot interiors must fit this height (Level GDD soft dep)."
+    source: design/gdd/player-third-person-controller.md  # F4
+    consumed_by: [Player Controller GDD, Perception GDD, Level GDD]
+
+  - name: eye_offset_crouch
+    value: 0.5  # m
+    safe_range: "locked"
+    constraint: "Perception-owned sensing-ray eye offset selected when controller stance = Crouched; first-class registry datum, not derived from h_crouch."
+    source: design/gdd/perception.md  # approved pinned eye-offset convention
+    owned_by: "Perception GDD"
+    consumed_by: [Perception GDD]
+
+  - name: eye_offset_stand
+    value: 1.6  # m
+    safe_range: "locked"
+    constraint: "Perception-owned sensing-ray eye offset selected when controller stance = Standing; first-class registry datum, not derived from h_stand."
+    source: design/gdd/perception.md  # approved pinned eye-offset convention
+    owned_by: "Perception GDD"
+    consumed_by: [Perception GDD]
+
+  - name: rear_damp_floor
+    value: 0.25
+    safe_range: "[0.15, 0.40]"
+    constraint: "0 < rear_damp_floor < 1 — both bounds are H.0.7 validator legs (AC-P18, round 3): the floor keeps full-rear turning NON-ZERO, the ceiling keeps w <= 1 so rear turns never exceed turn_rate (proportional rear damping, F3; replaces the binary backpedal turn-suspension whose hover trap and diagonal freeze were review round 1 blocker B2)"
+    note: "Turn-weight multiplier floor w(dot = -1); w = 1 for dot >= 0, linear in between. Feel-linked to backpedal_factor and turn_rate."
+    source: design/gdd/player-third-person-controller.md  # F3 (rev 2026-08-24)
+    consumed_by: [Player Controller GDD]
+
+  - name: stride_length_walk
+    value: 1.9  # m
+    safe_range: "[1.5, 2.4] m"
+    constraint: "stride_length_walk > 0 in every loaded config (H.0.7 validator leg, round 4 parity with the run-stride leg — nonpositive strides break threshold semantics)."
+    note: "Global audible-distance ledger (F5 rev 2026-08-25, Round-2 blocker 1): Walk contributes actual XZ displacement to one shared ledger; Idle/Crouch force r_noise 0 but freeze the ledger and armed flag without resetting them. The Walk threshold is 1.9 m; fresh-session commit-to-audible is ~0.551 s at starters. Tap-inching can eventually arm after enough total audible-state travel, so key segmentation cannot manufacture silence. SHARED: Player Noise GDD co-signs the freeze-without-reset semantics and step_event stream #3 will consume."
+    source: design/gdd/player-third-person-controller.md  # F5 (rev 2026-08-24)
+    owned_by: "Player Controller GDD (Player Noise co-sign)"
+    consumed_by: [Player Controller GDD, Player Noise GDD]
+
+  - name: stride_length_run
+    value: 2.6  # m
+    safe_range: "[2.0, 3.2] m"
+    constraint: "stride_length_run > stride_length_walk in every loaded config; both strides are also validated positive (H.0.7 legs, round 3 — nonpositive strides break threshold semantics); the cadence joint constraint also requires V_walk / stride_length_walk <= V_run / stride_length_run, so Run's steps-per-second cannot be slower than Walk's."
+    note: "Global audible-distance ledger threshold (F5 rev 2026-08-25): Run contributes actual XZ displacement to the shared ledger; Idle/Crouch freeze rather than reset. The Run threshold is 2.6 m; fresh-session commit-to-audible is ~0.456 s at starters. Cadence inversion is a load-time HARD rejection, not a post-load balance warning (rev 2026-08-28). SHARED with Player Noise GDD."
+    source: design/gdd/player-third-person-controller.md  # F5 (rev 2026-08-25)
+    owned_by: "Player Controller GDD (Player Noise co-sign)"
+    consumed_by: [Player Controller GDD, Player Noise GDD]
+
+  - name: rustle_threshold
+    value: 0.70  # ratio of the current stride — fires the controller's rustle_event pre-pip tell (rev 2026-08-27, B5)
+    safe_range: "[0.60, 0.80]"
+    note: "Audio-only pre-commit rustle, fire-once-per-stride, NEVER a hearing event and absent from the trace schema; emitted by the Player Controller (F5), consumed by audio."
+    source: design/gdd/player-third-person-controller.md  # F5 rustle_event (rev 2026-08-27); player-noise.md B5
+    owned_by: "Player Controller GDD (Player Noise co-sign)"
+    consumed_by: [Player Controller GDD, Player Noise GDD]
+
+noise_radii:
+  - name: R_walk
+    value_m: 4.0
+    safe_range_m: "[3.5, 5.0]"
+    source_px: 78  # prototype-validated; ratio walk:Burst = 1:2.63 LOCKED
+    source: design/gdd/perception.md  # F12/F13
+    owned_by: "Player Noise GDD (co-owner; prototype-sourced via Perception F12/F13)"
+    constraint: "R_walk < R_run < R_burst and R_burst <= R_vis (12.0 m — radius never exceeds the vision range, AC-F13); radius-edge probes at exact boundary +/ - 0.1 m (E14)"
+    consumed_by: [Perception GDD, Player Noise GDD]
+
+  - name: R_run
+    value_m: 6.0
+    safe_range_m: "[4.5, 7.5]"
+    note: "new (not in prototype); Player Noise GDD co-owns movement signature"
+    source: design/gdd/perception.md  # F12
+    owned_by: "Player Noise GDD"
+    consumed_by: [Perception GDD, Player Noise GDD]
+
+  - name: R_burst
+    value_m: 10.5
+    safe_range_m: "[9, 14]"
+    source_px: 205  # prototype-validated; ratio walk:Burst = 1:2.63 LOCKED
+    source: design/gdd/perception.md  # F12/F13
+    consumed_by: [Perception GDD, Player Noise GDD]
+
+burst_throw:
+  - name: BurstThrowConfig.v0
+    value: 10.0  # m/s — starter
+    safe_range: "raised-origin band [8, 12] m via R = v₀·cosθ·(v₀·sinθ + √((v₀·sinθ)² + 2·g·h_release))/g with h_release 1.5 m (rev 2026-08-27, B1 — flat-landing form R_flat = v0²·sin(2θ)/g struck: it under-estimates the chest-height throw by ≈1.6 m at starters); at θ 38° the raised-origin band solves to v0 ≈ [8.1, 10.2] m/s"
+    source: design/gdd/player-noise.md  # F4 (rev 2026-08-27); registered for the registry-dedup policy
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Level GDD]
+  - name: BurstThrowConfig.theta
+    value: 38  # degrees — starter
+    safe_range: "θ such that the raised-origin R stays in [8, 12] m at the loaded v0 (F4); θ ≤ 45° for a real arc at any v0"
+    source: design/gdd/player-noise.md  # F4 (rev 2026-08-27)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Level GDD]
+  - name: throw_release_height
+    value: 1.5  # m — Burst release height above feet, stance-independent (rev 2026-08-27, B1)
+    safe_range: "[1.2, 1.8] m"
+    note: "Feeds the F4 raised-origin range; raising it shortens range at fixed v0. Arc apex ≈1.93 m at starters — Level keeps throw volumes clear of ceilings near apex (ceiling-clamp edge case, player-noise E19)."
+    source: design/gdd/player-noise.md  # CR3/F4 (re-review rev 2026-08-27)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Level GDD]
+  - name: projectile_radius
+    value: 0.05  # m — Burst collision sphere radius (rev 2026-08-28, blocker 3)
+    safe_range: "locked"
+    note: "The fixed-radius Burst cast resolves contact at sphere_center + hit_normal × (projectile_radius + epsilon); the same E20 World/solid mask and QueryTriggerInteraction.Ignore apply to every substep."
+    source: design/gdd/player-noise.md  # F4 / E20 (behavioral revision 2026-08-28)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Physics GDD, Level GDD]
+  - name: dt_max
+    value: 0.0083333333  # s — 1/120 s maximum Burst integration substep
+    safe_range: "locked at 1/120 s"
+    note: "Burst simulation uses a dedicated fixed-step integrator with dt <= dt_max, independent of render-frame duration; Unity physics simulationMode is FixedUpdate for the certified path."
+    source: design/gdd/player-noise.md  # F4 / E19 (behavioral revision 2026-08-28)
+    owned_by: "Physics GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Physics GDD, Level GDD]
+  - name: pickup_reach_radius
+    value: 1.6  # m — reach radius to arm a Placed Burst (rev 2026-08-27, B7)
+    safe_range: "[1.0, 2.5] m"
+    note: "Floor stays above r_player 0.35 so the pickup prompt reads before contact; reachability is the limited-resource re-arm gate."
+    source: design/gdd/player-noise.md  # CR3 (re-review rev 2026-08-27)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Level GDD]
+
+guard_noise_response:
+  - name: t_noise_recommit_cooldown
+    value: 2.0  # s — post-resolution noise-recommit cooldown (rev 2026-08-27, B11)
+    safe_range: "[1.0, 3.0] s"
+    note: "The FSM drops Noise-heard relays during a LIVE noise-Investigate (single-consumption) and within this window after resolution — prevents Investigate-spam chains. The cooldown starts at Investigate resolution, not Chase-end. Player-noise E18 cross-ref."
+    source: design/gdd/guard-ai-fsm.md  # E18 authored (rev 2026-08-27); player-noise.md E18
+    owned_by: "Guard AI FSM GDD (Player Noise co-sign)"
+    consumed_by: [Guard AI FSM GDD, Player Noise GDD]
+
+  - name: t_noise_corroborate_window
+    value: 6.0  # s — same-area corroboration window for a guard's noise episode
+    safe_range: "[4.0, 8.0] s"
+    note: "Second same-area noise within the window recruits a peer; third escalates to locked zone. This positive corroboration leg is orthogonal to the single-guard recommit cooldown and must not be debounced."
+    source: design/gdd/player-noise.md  # Core Rule 7 / CR7 (behavioral revision 2026-08-28)
+    owned_by: "Guard AI FSM GDD (Player Noise co-sign)"
+    consumed_by: [Guard AI FSM GDD, Player Noise GDD]
+
+trace_event_schema:
+  source: design/gdd/perception.md  # R12 v3.2 (C-4 pin); rev 3.2 = escalation-commit junction (blocker B3) + confirm-window-elapsed/cap-reached facts; schema with Telemetry GDD
+  direction_note: "Perception publishes sensing FACTS (LOS gain/break, noise relay, threshold-crossing, confirm-window-elapsed, chase-reached, cap-reached, reachability [rev 3.3 — J2: the un-gated per-tick reachable|unreachable verdict, SINGLE source for the F2 Chase-cap, the R15 give-up predicate, and the catch-gate geometry]); Guard AI FSM publishes DECISIONS (investigate-commit on every episode-OPENING path, Chase-entry [rev 3.3 — the FSM's Chase decision record; the meter's Chase row triggers on it so A/R freeze on ALL Chase paths incl. hide-entry and carve-out], Chase-end, Investigate-resolution, peer-recruit, locked-zone, Capture) — Perception never publishes an escalation; the FSM acts on Perception's facts and Perception consumes the FSM's decision facts (event-not-command holds in both directions — neither calls the other, R12 rev 3.3). Suppression rule (rev 3.3, J1; tier-scoped rev 3.4): the FSM publishes exactly one escalation decision per escalation tier — an episode's first in that tier, never a same-tier duplicate (investigate-commit at the Investigate tier, Chase-entry at the Chase tier); an episode that commits Investigate and later reaches Chase publishes BOTH records, in that order (AC-R8 positive leg / AC-F9); a confirm-window commit absorbed into a live episode emits no second record (ADJ-4). Each record carries its publisher class. entry_id is allocated by Perception at episode open (threshold-crossing, or first LOS, or first noise-heard of an episode [rev 3.3, J3], or the direct hide-entrance Chase open [rev 3.2]) and relayed — never allocated — by the FSM on decision records. Guard-head yaw is a Perception INPUT (rev 3.3, J4 — the classifier's cumulative-absolute yaw-change channel; registered in the interactions matrix)."
+  event_types:
+    - name: LOS gain
+      fields: [source, distance, guard, timestamp, publisher]  # publisher = sensing-fact (Perception)
+    - name: LOS break
+      fields: [source, distance, guard, timestamp, R, break_type, causal_class, guard_yaw_delta, a_pre_break, threshold_applied, spot_position, hide_spot_id, entry_id, publisher]  # R = numeric R at break (rev 3.2); break_type: hide | wall | segment; causal_class (rev 3.1 ADJ-2 + rev 3.2 ruling + rev 3.3 J4): peek-out | guard-sweep | hide-dive | wall/segment | segment — the R7/R11 cancel counter consumes peek-out and player-attributed wall/segment; guard-sweep/hide-dive/segment never increment it (rev 3.2); guard_yaw_delta = cumulative-ABSOLUTE head yaw change during the window (J4 classifier channel, net rotation rejected); a_pre_break + threshold_applied = CR-FSM-01 amendment (rev 3.6): present on HIDE-DIVE breaks only — a_pre_break is the numeric accumulated alert at the last pre-break sight tick, threshold_applied is T_hide_entry(R) evaluated at that same tick; spot_position + hide_spot_id + entry_id = CR-FSM-01b extension (rev 3.7): also HIDE-DIVE breaks only — the entered spot's authored world position + ID and the Perception-allocated episode id at the direct hide-entrance open (the FSM's fallback/Chase targets and entry_id relay consume these — FSM C1.3/C1.5); NO-ALLOC-WHEN-LIVE (rev 3.8): the hide-entrance allocation fires only when the guard signals no live episode via the published live-Investigate/GuardGoalMode facts — otherwise the break fact relays the live episode's existing entry_id (retarget-under-suppression path, FSM C1.3); the FSM's hide-entry tier gate compares a_pre_break vs threshold_applied (Chase if a_pre_break >= threshold_applied, Investigate-commit cause=hide-entry fallback otherwise)
+    - name: Noise heard
+      fields: [kind, source, guard, fact_id, entry_id, consumption, timestamp, publisher]  # Perception relay of the NoiseEmitter — never a decision (rev 2026-08-28, B2: emitter-allocated ulong fact_id = transport/dedup token, one per published fact shared by ALL hearing guards; fact_id wraps only at 2^64 - 1 and is session-scoped; entry_id stays Perception-allocated at first-noise-heard of an episode [rev 3.3, J3], relayed never derived); BROADCAST to every in-range guard — one guard's consumption never invalidates another's relay (per-guard single-consumption, rev 3.3 — closes the R5/R12 single-consumer ambiguity); stale relays after Chase-end are dropped by the FSM, never re-heard
+    - name: peer-recruit
+      fields: [entry_id, fact_id, source_guard, area_position, timestamp, target_guard, publisher]  # FSM corroboration decision: second same-area noise within t_noise_corroborate_window; target_guard may be none when no eligible peer exists; publisher = FSM-decision
+    - name: locked-zone
+      fields: [entry_id, fact_id, source_guard, area_position, timestamp, patrol_area_id, publisher]  # FSM corroboration decision: third same-area noise within the window; zone-wide suspect response, no duplicate investigate-commit; publisher = FSM-decision
+    - name: Threshold crossing (confirm-window start)
+      fields: [entry_id, R, threshold_state, timestamp, publisher]  # numeric R added in v2; publisher = sensing-fact
+    - name: Confirm-window elapsed
+      fields: [entry_id, R, threshold_state, timestamp, publisher]  # rev 3.2: window reached t_win with LOS — the sensing fact that IS the threshold-path commit trigger; publisher = sensing-fact
+    - name: Escalation (investigate-commit, every path)
+      fields: [entry_id, R, cause, position, threshold_state, timestamp, hide_entry, publisher]  # rev 3.2: mandatory on every episode-OPENING path (rev 3.3, J1; tier-scoped rev 3.4 — the FSM publishes exactly one escalation decision per escalation tier, never a same-tier duplicate; an episode that commits Investigate and later reaches Chase additionally publishes its Chase-entry, both records in order); cause: threshold | noise | alert | cap-forced | hide-entry; R at commit read from a Perception-published R-bearing sensing fact at or just before commit (threshold paths: confirm-window-elapsed / chase-reached R; noise/alert paths: Perception's current-R readout piggybacked on the episode's sensing-fact preamble — rev 3.3 J3, no synchronous FSM->Perception query); entry_id relayed, never allocated; publisher = FSM-decision
+    - name: Cap-reached
+      fields: [entry_id, counter, position, timestamp, publisher]  # rev 3.2: cancel counter hit n_cancel_cap — a sensing fact, never an escalation; the FSM commits cause=cap-forced on this fact; publisher = sensing-fact
+    - name: Reachability
+      fields: [entry_id, guard, position, reachable, path_arrival_m, delta_y_m, timestamp, publisher]  # rev 3.3 (J2): Perception's un-gated per-tick reachable|unreachable verdict — ONE verdict set feeding the F2 Chase-cap, the R15 give-up predicate, and (via the FSM) the catch-gate geometry; |delta_y| beyond delta_y_tolerance -> unreachable; publisher = sensing-fact; consumed by Guard AI FSM
+    - name: Chase-reached
+      fields: [entry_id, R, threshold_state, position, timestamp, publisher]  # Perception's own accumulator fact (A >= T_chase with LOS) — publisher = sensing-fact; never an escalation (the FSM decides)
+    - name: Chase-entry
+      fields: [entry_id, cause, threshold_state, position, timestamp, paired_chase_reached, publisher]  # rev 3.3 (J1): the FSM's Chase-escalation DECISION record — Euclid grades THIS as the Chase escalation; the meter's Chase row triggers on it (A/R freeze on ALL Chase paths incl. hide-entry + carve-out); cause: threshold | hide-entry; paired to its chase-reached sensing precursor; publisher = FSM-decision
+    - name: Chase-end
+      fields: [entry_id, guard, timestamp, publisher]  # FSM publishes (R12); resumes R decay; Chase-tier Captures imply Chase-end (rev 3.2, scoped rev 3.9 CR-PERCEPTION-01) — witnessed Investigate-tier interior-inspection Captures publish Capture ALONE and exit the meter to Idle without a paired Chase-end
+    - name: Investigate-resolution
+      fields: [entry_id, cause, position, timestamp, publisher]  # cause: fruitless | sight-committed | cap-forced | capture | redirected | abandoned (rev 3.2); fruitless -> F6 residual share (FSM publishes, Perception consumes)
+    - name: Capture
+      fields: [entry_id, position, victim, carve_out, timestamp, publisher]  # carve_out: any spot-verification capture (Chase-tier spot-front capture OR witnessed either-tier interior-inspection capture) consumes ONE Chase-COUNT escalation slot per spot-verification incident (concept line 120, amended CR-CONCEPT-01 completion rev 3.9; incident delimiter = episode-scoped, CR-CONCEPT-02 rev 3.10 — closes when its episode(s) resolve, later witnessed dive = new incident + own slot); a carve_out Capture at the Investigate tier publishes Capture ALONE — no Chase-entry/Chase-end (rev 3.9 CR-PERCEPTION-01); Grade-GDD TODO: consumption of the witnessed-entry counting rule lands with the Suspicion Meter / Grade GDD
+    - name: Movement-state transition
+      fields: [from_state, to_state, timestamp, publisher]  # Player Controller event; at most one per tick after snapshot rebuild; same-frame inputs carry only the net pair; publisher = Player Controller
+    - name: step_event
+      fields: [state, position, stride_length_m, ledger_remainder_m, timestamp, publisher]  # Player Controller event; at most one per tick, actual XZ displacement only, remainder retained; consumed by Player Noise and audio; publisher = Player Controller
+    - name: HideSpot occupied
+      fields: [hide_spot_id, interior_position, timestamp, publisher]  # player-movement-hide #5 (rev 2026-08-26): posts on capsule entry to an Empty spot, exactly one per continuous occupancy (no duplicate/re-fire); consumed by Perception R4 (LOS-invisibility) + FSM hide-dive detection (CR-FSM-01b); publisher = HideSpot
+    - name: HideSpot empty
+      fields: [hide_spot_id, interior_position, timestamp, publisher]  # player-movement-hide #5 (rev 2026-08-26): posts synchronously on capsule exit, BEFORE any FSM tick consumes the current-tick fact set (D3 — the relocation-window escape / no-false-capture ordering); the ONLY writer of spot state Empty (player-occupancy-authoritative); publisher = HideSpot
+    - name: Trace markers (behavioral, non-decision)
+      fields: [marker_name, entry_id, timestamp, publisher]  # trace-only FSM behavioral markers — NOT decisions: never touch tier-scoped suppression or grading; Telemetry-visible only (rev 3.9 CR-PERCEPTION-01 registration). Known markers: postchase-sweep (rev 3.5, post-Chase LKP sweep beat); suppressed-hide-fallback (rev 3.9 C1.0 — emitted when ranks 1-3 win over the rank-4 sub-threshold hide-entry fallback, making the bounded supersession cell triageable in playtest)
