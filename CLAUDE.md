@@ -51,4 +51,5 @@ See `docs/COLLABORATIVE-DESIGN-PRINCIPLE.md` for full protocol and examples.
 
 ## Context Management
 
+@docs/context/context-loading-policy.md
 @.claude/docs/context-management.md

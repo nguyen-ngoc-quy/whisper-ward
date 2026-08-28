@@ -27,6 +27,15 @@ and Pre-Production.
   GDD requirement → ADR → Story → Test chain. Use in Production phase when
   stories and tests exist.
 
+## Context Budget Contract
+
+Read `docs/context/context-loading-policy.md` and
+`docs/context/context-manifest.yaml` before loading architecture inputs. Use
+`cross-system-audit` only for `full` or explicit cross-system work; for
+`coverage`, `consistency`, `engine`, and `single-gdd`, load only the scoped
+canonical GDDs and ADRs. Exclude session logs, agent memory, and historical
+review logs by default.
+
 ---
 
 ## Phase 1: Load Everything

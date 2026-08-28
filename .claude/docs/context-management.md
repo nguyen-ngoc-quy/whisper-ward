@@ -105,3 +105,12 @@ If a session dies ("prompt too long") or you start a new session to continue wor
 2. Read the full state file for context
 3. Read the partially-completed file(s) listed in the state
 4. Continue from the next incomplete section or task
+
+## Selective Context Loading
+
+Use `docs/context/context-manifest.yaml` and `docs/context/context-loading-policy.md`
+before reading project documents. Navigation summaries identify the smallest
+canonical set for the task. `production/session-logs/`, `production/session-state/`,
+and `.claude/agent-memory/` are excluded by default; read them only for an
+explicitly scoped historical or recovery question. Summaries never replace the
+canonical GDDs, registry, formulas, acceptance criteria, or review decisions.

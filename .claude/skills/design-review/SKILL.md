@@ -7,6 +7,14 @@ allowed-tools: Read, Glob, Grep, Write, Edit, Task, AskUserQuestion
 model: sonnet
 ---
 
+## Context Budget Contract
+
+Before loading documents, read `docs/context/context-loading-policy.md` and
+`docs/context/context-manifest.yaml`. Use the `target-review` profile: load the
+target GDD in full, then only direct dependency sections and matching registry
+entries. Do not load raw session logs, agent memory, or complete review history
+unless the latest review summary cannot answer a scoped historical question.
+
 ## Phase 0: Parse Arguments
 
 Extract `--depth [full|lean|solo]` if present. Default is `full` when no flag is given.

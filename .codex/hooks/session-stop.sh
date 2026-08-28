@@ -11,14 +11,23 @@ mkdir -p "$SESSION_LOG_DIR" 2>/dev/null
 RECENT_COMMITS=$(git log --oneline --since="8 hours ago" 2>/dev/null)
 MODIFIED_FILES=$(git diff --name-only 2>/dev/null)
 
-# --- Archive active session state on shutdown (do NOT delete) ---
-# active.md persists across clean exits so multi-session recovery works.
-# It is only valid to delete active.md manually or when explicitly superseded.
+# --- Record a compact state pointer on shutdown (do NOT copy the state) ---
+# active.md persists across clean exits so multi-session recovery works. The
+# full state remains at its canonical path; session-log.md stores only metadata.
 STATE_FILE="production/session-state/active.md"
 if [ -f "$STATE_FILE" ]; then
     {
-        echo "## Archived Session State: $TIMESTAMP"
-        cat "$STATE_FILE"
+        echo "## Session Checkpoint: $TIMESTAMP"
+        echo "State file: $STATE_FILE"
+        echo "State lines: $(wc -l < "$STATE_FILE" 2>/dev/null | tr -d ' ')"
+        echo "State bytes: $(wc -c < "$STATE_FILE" 2>/dev/null | tr -d ' ')"
+        if command -v sha256sum >/dev/null 2>&1; then
+            echo "State SHA-256: $(sha256sum "$STATE_FILE" | awk '{print $1}')"
+        elif command -v shasum >/dev/null 2>&1; then
+            echo "State SHA-256: $(shasum -a 256 "$STATE_FILE" | awk '{print $1}')"
+        else
+            echo "State SHA-256: unavailable"
+        fi
         echo "---"
         echo ""
     } >> "$SESSION_LOG_DIR/session-log.md" 2>/dev/null

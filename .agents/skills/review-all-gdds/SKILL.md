@@ -9,6 +9,13 @@ model: opus
 
 # Review All GDDs
 
+## Context Budget Contract
+
+Read `docs/context/context-loading-policy.md`, the context manifest, and the
+navigation summaries first. This skill may full-read all current canonical GDDs
+because that is its purpose, but it must exclude session logs, agent memory, and
+chronological review history unless the requested focus is historical drift.
+
 This skill reads every system GDD simultaneously and performs two complementary
 reviews that cannot be done per-GDD in isolation:
 

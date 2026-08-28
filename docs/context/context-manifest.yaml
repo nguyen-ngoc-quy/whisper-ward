@@ -1,0 +1,89 @@
+schema_version: 1
+last_reviewed: 2026-08-28
+policy: docs/context/context-loading-policy.md
+
+source_classes:
+  canonical:
+    - design/gdd/game-concept.md
+    - design/gdd/systems-index.md
+    - design/gdd/perception.md
+    - design/gdd/guard-ai-fsm.md
+    - design/gdd/player-noise.md
+    - design/gdd/player-movement-hide.md
+    - design/gdd/player-third-person-controller.md
+    - design/gdd/sound_performance_audit.md
+    - design/registry/entities.yaml
+    - src/
+    - docs/engine-reference/unity/VERSION.md
+  navigation:
+    - docs/context/project-brief.md
+    - docs/context/review-index.md
+    - design/gdd/systems-index.md
+    - production/stage.txt
+    - production/review-mode.txt
+  history:
+    - design/gdd/reviews/
+    - design/gdd/guard-ai-fsm-review.md
+    - docs/consistency-failures.md
+    - docs/consistency-report-*.md
+    - production/session-logs/
+    - production/session-state/
+  local:
+    - .claude/agent-memory/
+    - .claude/settings.local.json
+
+default_excludes:
+  - production/session-logs/**
+  - production/session-state/**
+  - .claude/agent-memory/**
+  - .claude/settings.local.json
+
+profiles:
+  planning:
+    include:
+      - docs/context/project-brief.md
+      - docs/context/review-index.md
+      - design/gdd/systems-index.md
+      - target_gdd
+      - direct_dependencies
+      - registry_entries_for_target
+    read_mode: summary_first_then_targeted_full
+    exclude_by_default: history_and_local
+  target-review:
+    include:
+      - docs/context/project-brief.md
+      - docs/context/review-index.md
+      - design/gdd/systems-index.md
+      - target_gdd_full
+      - direct_dependency_sections
+      - registry_entries_for_target
+    read_mode: target_full
+    historical_fallback: latest_review_summary_then_full_log
+  cross-system-audit:
+    include:
+      - navigation
+      - all_current_canonical_gdds
+      - design/registry/entities.yaml
+    read_mode: full_canonical_only
+    exclude_by_default: history_and_local
+  historical-audit:
+    include:
+      - explicitly_scoped_history_only
+    read_mode: on_demand
+
+summary_sources:
+  project_brief:
+    path: docs/context/project-brief.md
+    sources:
+      - AGENTS.md
+      - CLAUDE.md
+      - design/gdd/systems-index.md
+      - production/stage.txt
+      - production/review-mode.txt
+      - production/session-state/active.md
+  review_index:
+    path: docs/context/review-index.md
+    sources:
+      - design/gdd/systems-index.md
+      - design/gdd/reviews/
+      - production/session-state/active.md

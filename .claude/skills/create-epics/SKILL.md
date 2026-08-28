@@ -20,6 +20,15 @@ will have changed.
 
 **Output:** `production/epics/[epic-slug]/EPIC.md` + `production/epics/index.md`
 
+## Context Budget Contract
+
+Read `docs/context/context-loading-policy.md`,
+`docs/context/context-manifest.yaml`, `docs/context/project-brief.md`, and
+`docs/context/review-index.md` first. Resolve the requested layer or system
+from `design/gdd/systems-index.md`, then full-read only the in-scope canonical
+GDDs and their direct architecture dependencies. Do not read session logs or
+complete review histories by default.
+
 **Next step after each epic:** `/create-stories [epic-slug]`
 
 **When to run:** After `/create-control-manifest` and `/architecture-review` pass.
