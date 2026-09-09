@@ -28,3 +28,24 @@
 **What happened**: The first review's OQ4 directed moving `entry_id` allocation from Perception (per-guard episode id, allocated at first-noise-heard, R12/J3) to the emitter's publish ingress — and the first revision APPLIED it. The re-review's B2 blocker proved this wrong-direction: `entry_id` is Perception's episode identity (intrinsic to who heard and when), while an emitter mounting a shared transport needs only a dedup/presence token. Applying the OQ4 would have forced the emitter to allocate per-guard episode ids it has no knowledge of, and Perception to derive rather than allocate.
 **Resolution**: RESOLVED same session — two-ids-two-owners split: emitter-allocated **`fact_id`** (one per published fact, identical across all hearing guards, transport/dedup) + Perception-allocated **`entry_id`** (relayed across the rail, never derived). Amended: player-noise.md (F1 row, CR1/CR2/CR4, OQ4 → "COUNTERMANDED", Dependencies), perception.md R5/R12, registry noise-heard schema (`{kind, source, guard, fact_id, entry_id, consumption, timestamp, publisher}`), review log countermand note.
 **Pattern**: A review-directed cross-doc obligation can ship the **wrong direction** — a later re-review proved it so, and the dead obligation had to be countermanded across the GDD, perception.md, and the registry simultaneously. Record countermands prominently (review log + reflexion log + live GDD OQ text) or a future author re-applies the dead direction; a stale obligation is as dangerous as a stale pin.
+
+### [2026-09-02] — /consistency-check — 🔴 CONFLICT
+**Domain**: HideSpot reachability and catch-gate datum (Guard AI FSM C1.4 · Player Movement & Hide D1)
+**Documents involved**: `design/gdd/player-movement-hide.md` / `design/registry/entities.yaml` vs `design/gdd/guard-ai-fsm.md` C1.4
+**What happened**: The canonical D1 contract uses the sampled `proxy(interior_position)` from `guard_hold`; the FSM backstop still used raw `spot_position`, allowing certification and runtime to evaluate different endpoint and origin datums.
+**Resolution**: Highest-priority conflict fixed same session — C1.4 now samples and evaluates `proxy(interior_position)` from `guard_hold`. `catch_range` remains the engagement threshold and `catch_range + margin` remains hysteresis only.
+**Pattern**: Certification and runtime must consume the same sampled HideSpot datum and guard hold origin; a raw-zone-center fallback silently reopens endpoint divergence.
+
+### [2026-09-02] — /consistency-check — 🔴 CONFLICT
+**Domain**: Perception threshold tuning domain (Perception F5 · registry)
+**Documents involved**: `design/registry/entities.yaml` vs `design/gdd/perception.md` F5
+**What happened**: The F5 table presents starter-slice `T_entry` and `T_floor` values without clearly labeling their scope, while the registry defines the full legal `T_entry` domain `[0.04, 0.40]` and derived `T_floor` domain `[0.04, 0.08]`.
+**Resolution**: Resolved same session — F5 now presents the full legal ranges and separately labels the starter slice and starter examples.
+**Pattern**: A starter calibration table must identify its scope whenever the registry exposes a wider legal tuning domain.
+
+### [2026-09-02] — /consistency-check — 🔴 CONFLICT
+**Domain**: HideSpot event identity and performance audit (Event Bus · Player Movement & Hide · sound performance audit)
+**Documents involved**: `design/registry/entities.yaml` / `design/gdd/player-movement-hide.md` vs `design/gdd/sound_performance_audit.md`
+**What happened**: The audit's occupancy deduplication row omits the canonical immutable `transition_id` from `(session_id, attempt_epoch, hide_spot_id, transition_id)`.
+**Resolution**: Resolved same session — the audit row now states the complete immutable occupancy identity `(session_id, attempt_epoch, hide_spot_id, transition_id)`.
+**Pattern**: Exactly-once event audit rows must reproduce the full canonical identity tuple rather than rely on vague transport/source wording.

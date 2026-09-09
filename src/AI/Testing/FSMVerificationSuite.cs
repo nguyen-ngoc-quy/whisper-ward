@@ -1,243 +1,359 @@
-using System;
 using System.Collections.Generic;
+using NUnit.Framework;
 using UnityEngine;
-using Xunit; // Unity Test Framework
 using WhisperWard.AI.Core;
-using WhisperWard.AI.Perception;
 using WhisperWard.AI.FSM;
+using WhisperWard.AI.Perception;
 
 namespace WhisperWard.AI.Testing
 {
-    /// <summary>
-    /// Automated test suite for the Guard AI FSM.
-    /// Implements the H.0 Acceptance Criteria battery.
-    /// </summary>
     public class FSMVerificationSuite
     {
-        private const float TICK_INTERVAL = 0.5f; // Default 2Hz
+        private const string SessionId = "fsm-test-session";
+        private const long AttemptEpoch = 1;
+        private const float TickInterval = 0.5f;
 
-        /// <summary>
-        /// AC-FSM-1: Verify the hard 3-state cap is enforced.
-        /// </summary>
-        [Fact]
+        private FsmVerificationHarness _harness;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _harness = new FsmVerificationHarness(TickInterval);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            if (_harness != null)
+            {
+                _harness.Dispose();
+                _harness = null;
+            }
+        }
+
+        [Test]
         public void FSM_Has_Only_Three_States()
         {
-            // Arrange
-            var fsm = new GameObject("TestFSM").AddComponent<GuardFSM>();
-            var states = new HashSet<IGuardState>
+            GuardFSM fsm = _harness.CreateFsm(SessionId, AttemptEpoch);
+
+            var states = new HashSet<object>
             {
                 fsm.GetPatrolState(),
                 fsm.GetInvestigateState(),
                 fsm.GetChaseState()
             };
 
-            // Assert
-            Assert.Equal(3, states.Count);
-            Assert.Contains(fsm.GetPatrolState(), states);
-            Assert.Contains(fsm.GetInvestigateState(), states);
-            Assert.Contains(fsm.GetChaseState(), states);
+            Assert.AreEqual(3, states.Count);
         }
 
-        /// <summary>
-        /// AC-FSM-2: Verify the per-tier suppression rule (exactly one escalation per tier).
-        /// </summary>
-        [Fact]
-        public void FSM_Suppression_Rule_Enforced()
+        [Test]
+        public void FSM_ReanchorBudget_Uses_Registered_Difficulty_Formula()
         {
-            // Arrange
-            var tap = new GameObject("Tap").AddComponent<DecisionTap>();
-            var fsm = new GameObject("FSM").AddComponent<GuardFSM>();
-            var driver = new GameObject("Driver").AddComponent<PerceptionDriver>();
+            float starterBudget = _harness.ComputeCanonicalReanchorBudget(4f, 1f,
+                0.5f, 0.4f, 1f, 2f);
+            float harderBudget = _harness.ComputeCanonicalReanchorBudget(4f, 1.6f,
+                0.5f, 0.4f, 1f, 2f);
 
-            // Script: ConfirmWindowElapsed -> InvestigateCommit -> ChaseReached -> ChaseEntry
-            driver.eventScript = new List<ScriptedEvent>
-            {
-                new ScriptedEvent { Type = EventType.ConfirmWindowElapsed, Tick = 1, EntryId = "E1", ResidualR = 0.5f, ThresholdState = "active" },
-                new ScriptedEvent { Type = EventType.ChaseReached, Tick = 5, EntryId = "E1", Position = Vector3.zero, ResidualR = 1.0f, ThresholdState = "active" }
-            };
+            Assert.AreEqual(6.8f, starterBudget, 0.0001f);
+            Assert.AreEqual(9.68f, harderBudget, 0.0001f);
+        }
 
-            // Act
-            // Advance clock manually
-            for (int i = 0; i < 10; i++)
+        [Test]
+        public void FSM_Investigate_Liveness_Open_And_Close_AreObserved_On_RealBus()
+        {
+            GuardFSM fsm = _harness.CreateFsm(SessionId, AttemptEpoch);
+            NoiseHeardRelay relay = _harness.CreateNoiseRelay(SessionId, AttemptEpoch, 1,
+                "entry-01", fsm.GuardEid, new Vector3(2f, 0f, 3f), 1.25f, 0.4f);
+
+            Assert.AreEqual(EventAdmission.Accepted, _harness.Publish(relay).Admission);
+
+            _harness.Advance(TickInterval);
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(1, _harness.LivenessFacts.Count);
+
+            LivenessFact open = _harness.LivenessFacts[0];
+            Assert.AreEqual(SessionId, open.SessionId);
+            Assert.AreEqual(AttemptEpoch, open.AttemptEpoch);
+            Assert.AreEqual("entry-01", open.EntryId);
+            Assert.AreEqual("open", open.Operation);
+            Assert.AreEqual("Investigate", open.Tier);
+            Assert.AreEqual("investigate-commit", open.Cause);
+            Assert.AreEqual(1.25f, open.SourceTimestamp, 0.0001f);
+            Assert.AreEqual("GuardAISystem", open.Publisher);
+
+            fsm.TransitionTo(fsm.GetPatrolState());
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(2, _harness.LivenessFacts.Count);
+            LivenessFact close = _harness.LivenessFacts[1];
+            Assert.AreEqual("close", close.Operation);
+            Assert.AreEqual("Investigate", close.Tier);
+            Assert.AreEqual("investigate-resolution", close.Cause);
+            Assert.AreEqual("entry-01", close.EntryId);
+            Assert.AreEqual("GuardAISystem", close.Publisher);
+        }
+
+        [Test]
+        public void FSM_Chase_Liveness_Open_And_Close_AreObserved_On_RealBus()
+        {
+            GuardFSM fsm = _harness.CreateFsm(SessionId, AttemptEpoch);
+            fsm.GetChaseState().Init("entry-chase", "threshold", new Vector3(4f, 0f, 1f));
+
+            fsm.TransitionTo(fsm.GetChaseState());
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(1, _harness.LivenessFacts.Count);
+            LivenessFact open = _harness.LivenessFacts[0];
+            Assert.AreEqual("open", open.Operation);
+            Assert.AreEqual("Chase", open.Tier);
+            Assert.AreEqual("Chase-entry", open.Cause);
+            Assert.AreEqual("entry-chase", open.EntryId);
+
+            fsm.TransitionTo(fsm.GetPatrolState());
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(2, _harness.LivenessFacts.Count);
+            LivenessFact close = _harness.LivenessFacts[1];
+            Assert.AreEqual("close", close.Operation);
+            Assert.AreEqual("Chase", close.Tier);
+            Assert.AreEqual("Chase-end", close.Cause);
+            Assert.AreEqual("entry-chase", close.EntryId);
+        }
+
+        [Test]
+        public void FSM_Investigate_To_Chase_Uses_InPlace_Liveness_Promotion()
+        {
+            GuardFSM fsm = _harness.CreateFsm(SessionId, AttemptEpoch);
+            PublishNoiseRelay(fsm, 1, 1f, new Vector3(2f, 0f, 2f), 0.2f);
+            _harness.Advance(TickInterval);
+            _harness.Advance(TickInterval);
+
+            _harness.Publish(new ChaseReached
             {
-                driver.OnTick(i, TICK_INTERVAL);
+                EntryId = "entry-01",
+                Position = new Vector3(4f, 0f, 3f)
+            }, SessionId, AttemptEpoch, "chase-reached-01");
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(2, _harness.LivenessFacts.Count);
+            Assert.AreEqual("open", _harness.LivenessFacts[0].Operation);
+            Assert.AreEqual("promote", _harness.LivenessFacts[1].Operation);
+            Assert.AreEqual("entry-01", _harness.LivenessFacts[0].EntryId);
+            Assert.AreEqual("entry-01", _harness.LivenessFacts[1].EntryId);
+            Assert.AreEqual(1, CountRecords<InvestigateCommit>(_harness.Decisions));
+            Assert.AreEqual(fsm.GetChaseState(), fsm.CurrentState);
+        }
+
+        [Test]
+        public void FSM_Ignored_Relay_Emits_One_Suppressed_Receipt()
+        {
+            GuardFSM fsm = _harness.CreateFsm(SessionId, AttemptEpoch);
+            PublishNoiseRelay(fsm, 1, 1f, new Vector3(1f, 0f, 1f), 0.1f);
+            _harness.Advance(TickInterval);
+            _harness.Advance(TickInterval);
+            PublishNoiseRelay(fsm, 2, 2f, new Vector3(1.2f, 0f, 1.1f), 0.2f);
+            _harness.Advance(TickInterval);
+            PublishNoiseRelay(fsm, 3, 3f, new Vector3(1.3f, 0f, 1.2f), 0.3f);
+            _harness.Advance(TickInterval);
+            PublishNoiseRelay(fsm, 4, 4f, new Vector3(1.4f, 0f, 1.3f), 0.4f);
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(1, _harness.SuppressedReceipts.Count);
+            Assert.AreEqual(4UL, _harness.SuppressedReceipts[0].FactId);
+            Assert.AreEqual("fsm-suppressed",
+                _harness.SuppressedReceipts[0].SuppressionReason);
+            Assert.IsFalse(_harness.SuppressedReceipts[0].VisibleToPlayer);
+            Assert.IsFalse(_harness.SuppressedReceipts[0].MicroTellEmitted);
+        }
+
+        [Test]
+        public void FSM_Reanchor_Keeps_Live_Entry_And_Does_Not_Publish_Duplicate_Commit()
+        {
+            GuardFSM fsm = _harness.CreateFsm(SessionId, AttemptEpoch);
+
+            Assert.AreEqual(EventAdmission.Accepted, _harness.Publish(
+                _harness.CreateNoiseRelay(SessionId, AttemptEpoch, 1, "entry-01",
+                    fsm.GuardEid, new Vector3(2f, 0f, 2f), 1f, 0.2f)).Admission);
+
+            _harness.Advance(TickInterval);
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(EventAdmission.Accepted, _harness.Publish(
+                _harness.CreateNoiseRelay(SessionId, AttemptEpoch, 2, "entry-01",
+                    fsm.GuardEid, new Vector3(2.4f, 0f, 2.2f), 2f, 0.6f)).Admission);
+
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(1, CountRecords<InvestigateCommit>(_harness.Decisions));
+            Assert.AreEqual(2, CountRelayOutcomes(RelayConsumption.Consumed));
+
+            FsmVerificationHarness.InvestigateDiagnostics diagnostic =
+                _harness.GetInvestigateDiagnostics(fsm);
+            Assert.AreEqual("entry-01", diagnostic.EntryId);
+            Assert.AreEqual(2, diagnostic.CorroborationCount);
+            Assert.AreEqual(6f, diagnostic.GiveupTimer, 0.0001f);
+            Assert.IsFalse(diagnostic.SearchArmed);
+            Assert.IsTrue(diagnostic.IsMovingToTarget);
+            Assert.AreEqual(new Vector3(2.4f, 0f, 2.2f), diagnostic.TargetPosition);
+        }
+
+        [Test]
+        public void FSM_Corroboration_Saturates_At_Three_And_Fourth_Qualifying_Relay_Is_Ignored()
+        {
+            GuardFSM fsm = _harness.CreateFsm(SessionId, AttemptEpoch);
+            PublishNoiseRelay(fsm, 1, 1f, new Vector3(1f, 0f, 1f), 0.1f);
+            _harness.Advance(TickInterval);
+            _harness.Advance(TickInterval);
+
+            PublishNoiseRelay(fsm, 2, 2f, new Vector3(1.2f, 0f, 1.1f), 0.2f);
+            _harness.Advance(TickInterval);
+
+            PublishNoiseRelay(fsm, 3, 3f, new Vector3(1.3f, 0f, 1.2f), 0.3f);
+            _harness.Advance(TickInterval);
+
+            PublishNoiseRelay(fsm, 4, 4f, new Vector3(1.4f, 0f, 1.3f), 0.4f);
+            _harness.Advance(TickInterval);
+
+            Assert.AreEqual(1, CountRecords<InvestigateCommit>(_harness.Decisions));
+            Assert.AreEqual(3, CountRelayOutcomes(RelayConsumption.Consumed));
+            Assert.AreEqual(1, CountRelayOutcomes(RelayConsumption.Ignored));
+            Assert.AreEqual(3, _harness.GetInvestigateDiagnostics(fsm).CorroborationCount);
+        }
+
+        [Test]
+        public void FSM_EpochBarrier_Diagnostic_Clears_Old_Work_Without_Claiming_Publication_Evidence()
+        {
+            GuardFSM fsm = _harness.CreateFsm(SessionId, AttemptEpoch);
+            PublishNoiseRelay(fsm, 1, 1f, new Vector3(0f, 0f, 0f), 0.2f);
+            _harness.Advance(TickInterval);
+            _harness.Advance(TickInterval);
+            _harness.ClearCapturedEvents();
+
+            fsm.ResetForBoundary(SessionId, AttemptEpoch + 1);
+            Assert.AreEqual(1, _harness.Bus.PendingEnvelopeCount);
+            Assert.AreEqual("entry-01", fsm.currentEntryId);
+
+            _harness.BeginEpoch(SessionId, AttemptEpoch + 1);
+            Assert.AreEqual(0, _harness.Bus.PendingEnvelopeCount);
+            Assert.IsNull(fsm.currentEntryId);
+            Assert.AreEqual(fsm.GetPatrolState(), fsm.CurrentState);
+            Assert.AreEqual(0, _harness.LivenessFacts.Count);
+        }
+
+        [Test]
+        public void FSM_PhaseCoordinator_Drains_Canonical_Order_And_Pause_Preserves_It()
+        {
+            var order = new List<string>();
+            _harness.BeginSession(SessionId, AttemptEpoch);
+
+            _harness.Bus.Subscribe<PhaseProbeEvent>(probe =>
+            {
+                order.Add("drain:" + probe.PhaseLabel);
+            });
+
+            _harness.Coordinator.RegisterIngressSource((tick, delta) =>
+            {
+                order.Add("participant:GameplayIngress");
+                _harness.Publish(PhaseProbeEvent.Create(SessionId, AttemptEpoch,
+                    "hearing-event", EventBusPhase.Hearing, _harness.Clock.CurrentTime));
+            });
+            _harness.Coordinator.RegisterHearingParticipant((tick, delta) =>
+            {
+                order.Add("participant:Hearing");
+                _harness.Publish(PhaseProbeEvent.Create(SessionId, AttemptEpoch,
+                    "fsm-event", EventBusPhase.FsmDecision, _harness.Clock.CurrentTime));
+            });
+            _harness.Coordinator.RegisterFsmParticipant((tick, delta) =>
+            {
+                order.Add("participant:FsmDecision");
+                _harness.Publish(PhaseProbeEvent.Create(SessionId, AttemptEpoch,
+                    "presentation-event", EventBusPhase.Presentation,
+                    _harness.Clock.CurrentTime));
+            });
+
+            _harness.Publish(PhaseProbeEvent.Create(SessionId, AttemptEpoch,
+                "ingress-event", EventBusPhase.GameplayIngress, 0f));
+
+            _harness.Clock.SetPaused(true);
+            _harness.Advance(2f);
+            Assert.AreEqual(0, order.Count);
+            Assert.AreEqual(0, _harness.Clock.CurrentTick);
+
+            _harness.Clock.SetPaused(false);
+            _harness.Advance(TickInterval);
+
+            CollectionAssert.AreEqual(new[]
+            {
+                "drain:GameplayIngress",
+                "participant:GameplayIngress",
+                "drain:Hearing",
+                "participant:Hearing",
+                "drain:FsmDecision",
+                "participant:FsmDecision",
+                "drain:Presentation"
+            }, order);
+        }
+
+        private void PublishNoiseRelay(GuardFSM fsm, ulong factId, float sourceTimestamp,
+            Vector3 position, float residual)
+        {
+            Assert.AreEqual(EventAdmission.Accepted, _harness.Publish(
+                _harness.CreateNoiseRelay(SessionId, _harness.Bus.AttemptEpoch, factId,
+                    "entry-01", fsm.GuardEid, position, sourceTimestamp, residual)).Admission);
+        }
+
+        private int CountRelayOutcomes(RelayConsumption consumption)
+        {
+            int count = 0;
+            for (int i = 0; i < _harness.RelayOutcomes.Count; i++)
+            {
+                if (_harness.RelayOutcomes[i].Consumption == consumption)
+                    count++;
             }
 
-            // Assert
-            // Should have exactly one InvestigateCommit and one ChaseEntry
-            Assert.Equal(1, tap.GetCount<InvestigateCommit>());
-            Assert.Equal(1, tap.GetCount<ChaseEntry>());
+            return count;
         }
 
-        /// <summary>
-        /// AC-FSM-3: Verify the Chase-end record is published on termination.
-        /// </summary>
-        [Fact]
-        public void FSM_Chase_End_Published()
+        private static int CountRecords<T>(IReadOnlyList<DecisionRecord> records)
+            where T : DecisionRecord
         {
-            // Arrange
-            var tap = new GameObject("Tap").AddComponent<DecisionTap>();
-            var fsm = new GameObject("FSM").AddComponent<GuardFSM>();
-            var driver = new GameObject("Driver").AddComponent<PerceptionDriver>();
-
-            // Script: Chase reached, then give-up after 10 ticks
-            driver.eventScript = new List<ScriptedEvent>
+            int count = 0;
+            for (int i = 0; i < records.Count; i++)
             {
-                new ScriptedEvent { Type = EventType.ChaseReached, Tick = 1, EntryId = "E2", Position = Vector3.zero },
-                new ScriptedEvent { Type = EventType.Reachability, Tick = 11, EntryId = "E2", Position = Vector3.zero, IsReachable = false, PathArrivalM = 10f, DeltaYM = 0f }
-            };
-
-            // Act
-            for (int i = 0; i < 15; i++)
-            {
-                driver.OnTick(i, TICK_INTERVAL);
+                if (records[i] is T)
+                    count++;
             }
 
-            // Assert
-            Assert.Equal(1, tap.GetCount<ChaseEntry>());
-            Assert.Equal(1, tap.GetCount<ChaseEnd>());
+            return count;
         }
 
-        /// <summary>
-        /// AC-FSM-4: Verify the give-up clock formula (D1).
-        /// </summary>
-        [Fact]
-        public void FSM_Giveup_Clock_Formula()
+        private sealed class PhaseProbeEvent : IEvent, IEventPhase
         {
-            // Arrange
-            float t_giveup_base = 4.0f;
-            float s_diff = 1.0f;
-            float k_thorough = 0.50f;
-            float R_max = 1.0f;
+            private PhaseProbeEvent(string sessionId, long attemptEpoch, string identity,
+                EventBusPhase phase, float timestamp)
+            {
+                SessionId = sessionId;
+                AttemptEpoch = attemptEpoch;
+                Identity = identity;
+                Phase = phase;
+                Timestamp = timestamp;
+            }
 
-            // Act
-            float tau_R0 = 1 + k_thorough * (0 / R_max);
-            float tau_Rmax = 1 + k_thorough * (R_max / R_max);
+            public string SessionId { get; }
+            public long AttemptEpoch { get; }
+            public float Timestamp { get; }
+            public string Publisher { get { return "FSMVerificationSuite"; } }
+            public string Identity { get; }
+            public EventBusPhase Phase { get; }
+            public string PhaseLabel { get { return Phase.ToString(); } }
 
-            float t_giveup_R0 = t_giveup_base * s_diff * tau_R0;
-            float t_giveup_Rmax = t_giveup_base * s_diff * tau_Rmax;
-
-            // Assert
-            Assert.Equal(4.0f, t_giveup_R0, precision: 0.01f);
-            Assert.Equal(6.0f, t_giveup_Rmax, precision: 0.01f);
-        }
-
-        /// <summary>
-        /// AC-FSM-5: Verify the Chase speed coupling (D4).
-        /// </summary>
-        [Fact]
-        public void FSM_Chase_Speed_Coupling()
-        {
-            // Arrange
-            float V_run_starter = 6.25f;
-            float rho_chase = 1.20f;
-
-            // Act
-            float V_chase = rho_chase * V_run_starter;
-
-            // Assert
-            Assert.Equal(7.50f, V_chase, precision: 0.01f);
-            Assert.True(V_chase >= 1.10f * V_run_starter);
-        }
-
-        /// <summary>
-        /// AC-FSM-6: Verify the catch-range invariant (D5).
-        /// </summary>
-        [Fact]
-        public void FSM_Catch_Range_Invariant()
-        {
-            // Arrange
-            float V_run_max = 7.2f;
-            float T_sample_max = 0.5f;
-            float hyst = 0.7f;
-            float r_guard = 0.40f;
-            float r_player = 0.35f;
-            float stopping_distance = 0f;
-
-            // Act
-            float binding_floor = V_run_max * T_sample_max + hyst + r_guard + r_player + stopping_distance;
-
-            // Assert
-            Assert.Equal(5.05f, binding_floor, precision: 0.01f);
-            Assert.True(5.5f > binding_floor); // catch_range 5.5 > 5.05
-        }
-
-        /// <summary>
-        /// AC-FSM-7: Verify the constraint chain (D7).
-        /// </summary>
-        [Fact]
-        public void FSM_Constraint_Chain()
-        {
-            // Arrange
-            float T_sample_max = 0.5f;
-            float t_resight_min = 1.0f;
-            float t_giveup_chase = 8.0f;
-            float t_cap_chase = 30.0f;
-
-            // Assert
-            Assert.True(T_sample_max < t_resight_min);
-            Assert.True(t_resight_min < t_giveup_chase);
-            Assert.True(t_giveup_chase < t_cap_chase);
-        }
-
-        /// <summary>
-        /// AC-FSM-8: Verify the GuardGoalMode enum is used correctly.
-        /// </summary>
-        [Fact]
-        public void FSM_GuardGoalMode_Enum()
-        {
-            // Arrange
-            var fsm = new GameObject("FSM").AddComponent<GuardFSM>();
-
-            // Act
-            fsm.SetGoalMode(GuardGoalMode.LivePursuit);
-
-            // Assert
-            Assert.Equal(GuardGoalMode.LivePursuit, fsm.currentGoalMode);
-
-            // Test HideSpotFront
-            fsm.SetGoalMode(GuardGoalMode.HideSpotFront);
-            Assert.Equal(GuardGoalMode.HideSpotFront, fsm.currentGoalMode);
-
-            // Test StaleLKP
-            fsm.SetGoalMode(GuardGoalMode.StaleLKP);
-            Assert.Equal(GuardGoalMode.StaleLKP, fsm.currentGoalMode);
-
-            // Test None
-            fsm.SetGoalMode(GuardGoalMode.None);
-            Assert.Equal(GuardGoalMode.None, fsm.currentGoalMode);
-        }
-
-        /// <summary>
-        /// AC-FSM-9: Verify the post-chase sweep timing (D3).
-        /// </summary>
-        [Fact]
-        public void FSM_PostChase_Sweep_Timing()
-        {
-            // Arrange
-            float t_sweep_postchase = 2.0f;
-            float T_sample_max = 0.5f;
-            float t_giveup_chase = 8.0f;
-
-            // Assert
-            Assert.True(t_sweep_postchase >= 2 * T_sample_max);
-            Assert.True(t_sweep_postchase < t_giveup_chase);
-        }
-
-        /// <summary>
-        /// AC-FSM-10: Verify the catch timer duration (D7).
-        /// </summary>
-        [Fact]
-        public void FSM_Catch_Timer_Duration()
-        {
-            // Arrange
-            float t_catch = 1.0f;
-            float T_sample_max = 0.5f;
-            float t_giveup_min = 2.45f;
-
-            // Assert
-            Assert.True(t_catch >= 2 * T_sample_max);
-            Assert.True(t_catch < t_giveup_min);
+            public static PhaseProbeEvent Create(string sessionId, long attemptEpoch,
+                string identity, EventBusPhase phase, float timestamp)
+            {
+                return new PhaseProbeEvent(sessionId, attemptEpoch, identity, phase,
+                    timestamp);
+            }
         }
     }
 }

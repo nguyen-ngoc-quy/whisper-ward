@@ -2,8 +2,18 @@
 
 > **Status**: Under Review (fresh decomposition, 2026-08-17)
 > **Created**: 2026-08-17
-> **Last Updated**: 2026-08-27
+> **Last Updated**: 2026-08-30
 > **Source Concept**: design/gdd/game-concept.md (APPROVED conditional — review #24, saturation)
+>
+> **Cross-document authority note (lifecycle / attempt_epoch).** The canonical
+> lifecycle transition table for `attempt_epoch` increments — covering death,
+> capture, respawn, segment reset, full-room restart, scene reload, new
+> playable attempt, pause/resume, and pool/unpool — is authoritative in
+> `design/registry/entities.yaml` and reproduced verbatim in
+> `player-noise.md §Ownership`. Player Noise, Perception, Guard AI FSM, and
+> Player Movement & Hide all reference the same table; no file owns a distinct
+> version. Status for row 3 (Player Noise) remains **In Review**; this note is
+> additive only and does not change any system status.
 
 ---
 
@@ -33,9 +43,9 @@ demo. See the concept's review history for the fully-pinned contract surface
 | 0 | Game Concept | Meta | — | **Approved** (2026-08-17, review #24 — conditional, saturation) | `design/gdd/game-concept.md` | — |
 | 1 | Guard AI (FSM core) | AI & Perception | MVP | **Approved** (2026-08-24 — round 8 TERMINAL CONFIRMATION PANEL: charter sweeps clean (A–F diff audit exact, B1–B10 regression 10/10, R6-B1..B4 clean), zero HIGH; sole MED (R8-M1: AC-FSM-11(c) watchdog ceiling omitted the new leg's post-flip commit span) ruled test-arithmetic by CD and repaired same session via CD-sanctioned micro-amendment **rev 4.1** — five-step verification bar V1–V5 passed ⇒ APPROVED final, after 8 review rounds) | `design/gdd/guard-ai-fsm.md` | Perception, NavMesh, Event bus |
 | 2 | Perception systems (vision + hearing + meter) | AI & Perception | MVP | **Approved** (2026-08-18 — confirmation re-review of revision 3.4 in lean mode; all 8 J-gates J1–J8 verified landed; J1 suppression rule re-scoped per-tier closes cleanly; registry lock-step re-established via /consistency-check 2026-08-18 — schema direction_note corrected to the per-tier suppression rule) | `design/gdd/perception.md` | Player Controller, NavMesh, Physics, Event bus |
-| 3 | Player Noise (`NoiseEmitter`) | Gameplay | MVP | **In Review** (2026-08-27 — re-review verdict: **MAJOR REVISION NEEDED**, Scope XL, 10 BLOCKING + 5 IMPORTANT + 5 specialist disagreements; all 5 disagreements adjudicated [A]×5 (cadence → HARD-reject, portals → binary kept, landing ghost → kept, voice → merged w/ LUFS, hearing tick → 5 Hz kept); 11 prior contract-hygiene blockers (B1–B11) PARTIALLY resolved — contract pass landed but behavior pass revealed 10 new gaps in 3 categories: WebGL-impossible (B1, B2, B3), Pillar-1/Pillar-2 undermined (B6, B9, B7), AC gaps (B4); 3 user-adjudication calls now in [A] column; next: apply 10-blocker revision) | `design/gdd/player-noise.md` | Player Controller, Physics, Event bus, Input |
+| 3 | Player Noise (`NoiseEmitter`) | Gameplay | MVP | **In Review** (2026-08-31 — fresh full re-review returned NEEDS REVISION with 12 blockers; all 12 revised same session: re-anchor formula re-anchored on shared `s_diff` with `S_DIFF`/`reanchor_speed_ratio` STRUCK, ΔY falloff datum moved to guard feet with eye as occlusion-only endpoint, AC19 `confirmed`-only pass states, middleware-neutral onset wording pending OQ3 ADR, persistent while-Carried Ghost Landing Sight, suppression micro-tell, 33 ms p95 whole-frame WebGL gate with 2.0/12.0 ms decomposition records, corroboration exact-origin sharp edge documented, and full MVP fixture repair — pickup re-sited ≥ 2.0 m off patrol corridors, ceiling overhang re-staged with grounded-launch contact math, dedicated void variant, teaching/signal-A/search-patrol/restart records conformed to registry field contracts, gate `trigger_noise_kind`/`landing_fact_id` binding, `guard_feet_ws` datum field + registry conditional rules; pending clean fresh re-review; status intentionally not Approved) | `design/gdd/player-noise.md` | Player Controller, Physics, Event bus, Input |
 | 4 | Alert propagation | AI & Perception | Vertical Slice | Not Started | — | Perception, Guard AI, Event bus |
-| 5 | Player Movement & Hide (`HideSpot`) | Gameplay | MVP | **In Review** (2026-08-26 — GDD complete A–H + Visual/Audio + UI + Open Qs; Section D passed advesarial systems-designer review [5 holes H1–H5 fixed], Section H qa-lead reframed to owned/delegated ACs; pending `/design-review`) | `design/gdd/player-movement-hide.md` | Player Controller, Physics, Event bus, Level |
+| 5 | Player Movement & Hide (`HideSpot`) | Gameplay | Target | **In Review** (2026-09-01 — full review returned MAJOR REVISION NEEDED; revision decisions lock Target scope, occupancy-only HideSpot ownership, non-authoritative hunches, rev 4.2 FSM dependency, overlap rejection, formal AC10 escape, and accessibility fallback; pending fresh full re-review) | `design/gdd/player-movement-hide.md` | Player Controller, Physics, Event bus, Level |
 | 6 | Camera system (static, low-scope) | Gameplay | Target | Not Started | — | Perception, Alert propagation, Level, Event bus |
 | 7 | Suspicion Meter / Grade operator | Gameplay | MVP | Not Started | — | Perception, Guard AI, Event bus, Save/Session state |
 | 8 | Level / Content | Content | Vertical Slice | Not Started | — | NavMesh, Scene/Asset mgmt, Event bus |
@@ -56,6 +66,8 @@ demo. See the concept's review history for the fully-pinned contract surface
 ---
 
 ## Categories
+
+> **Player Noise review amendment (2026-08-28):** the source GDD now requires direct contracts with Camera/Aim and Save/Session in addition to Player Controller, Physics, Event bus, and Input. The revised acceptance surface also separates MVP one-guard behavior from Target-tier HideSpot/corroboration and adds the shared virtual-clock, epoch, and level-certification gates. The row above remains the historical review record; its status is superseded by the latest Player Noise document header and review output.
 
 | Category | Description | Typical Systems |
 |----------|-------------|-----------------|

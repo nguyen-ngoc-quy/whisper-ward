@@ -1,4 +1,5 @@
 # Local and ephemeral agent state
+.worktrees/
 production/session-logs/
 production/session-state/
 .claude/agent-memory/
@@ -30,4 +31,3 @@ Thumbs.db
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
 [Mm]emoryCaptures/
-

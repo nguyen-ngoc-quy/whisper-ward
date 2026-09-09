@@ -1,52 +1,56 @@
 # Guard AI FSM Implementation
 
 ## Overview
-This directory contains the complete implementation of the Guard AI Finite State Machine (FSM) for Whisper Ward, based on the GDD in `design/gdd/guard-ai-fsm.md` and the entity registry in `design/registry/entities.yaml`.
+This directory contains the complete implementation of the Guard AI Finite State Machine (FSM) and its session runtime (noise emission, hearing scheduling, Burst lifecycle, event transport) for Whisper Ward, based on the GDD in `design/gdd/guard-ai-fsm.md` and the entity registry in `design/registry/entities.yaml`.
 
 ## Architecture Overview
 The implementation follows a strict event-driven (event-not-command) architecture with:
-1. **Shared Virtual Tick Clock** - Ensures determinism
-2. **R12 Event Bus** - Handles communication between Perception and FSM
+1. **Shared Canonical Virtual Tick Clock** - 1/120 s fixed substep; hearing (5 Hz) and FSM (0.5 s) are derived cadences — ensures determinism
+2. **Session Event Bus** - Transactional pub/sub transport with bounded retry and epoch/session barriers; handles communication between Perception and FSM
 3. **3-State FSM** - Patrol → Investigate → Chase (strict cap)
-4. **Decision Record Publishing** - FSM never queries Perception directly
+4. **Decision Record Publishing** - FSM never queries Perception directly; it consumes published relays and publishes immutable LivenessFacts that Perception reads at the previous boundary
 
 ## Core Components
 
-### Infrastructure
-- `VirtualTickClock.cs` - Shared tick authority (0.5s default)
-- `EventBus.cs` - Pub/sub system for R12 events
-- `IEvent.cs` - Base interface for all events
+### Infrastructure (`src/AI/Core/`)
+- `VirtualTickClock.cs` - Shared canonical tick authority (1/120 s fixed substep; hearing 5 Hz and FSM 0.5 s cadences are derived boundaries)
+- `EventBus.cs` - Session-scoped pub/sub transport with transactional handoff (`SubscribeHandoff<T>`), bounded retry, and epoch/session barriers
+- `IEvent.cs` - Base interfaces and envelope contracts for all events
+- `SessionBoundaryService.cs` - Session/attempt-epoch barrier owner; notifies lifecycle listeners before bus generation advance
+- `SessionPhaseCoordinator.cs` - Deterministic phase order: GameplayIngress drain -> ingress sources -> GameplayIngress drain -> Hearing drain -> hearing participants -> FsmDecision drain -> FSM participants -> Presentation drain
+- `NoiseSourceRecord.cs` - Typed Movement/Burst source records with envelope-aware Burst identity (`ulong flight_handle_id`)
+- `NoiseRuntimeConfiguration.cs` - Immutable registry-backed hearing/FSM runtime contract (registered 5 Hz hearing, 0.5 s FSM cadence)
+- `BurstRuntimeConfiguration.cs` - Immutable registry-backed Burst contract (`1/120 s` canonical fixed substep)
+- `PhysicsQueryProfile.cs` - Validated cached E20 mask (`LayerMask.NameToLayer`, forbidden layers, `QueryTriggerInteraction.Ignore`)
 
-### Perception Schema (`src/AI/Perception/`)
-- `R12Schema.cs` - Complete implementation of all R12 sensing facts and decision records
-  - SensingFacts: LOSGain, LOSBreak, NoiseHeard, ThresholdCrossing, ConfirmWindowElapsed, CapReached, Reachability, ChaseReached
-  - DecisionRecords: InvestigateCommit, ChaseEntry, ChaseEnd, InvestigateResolution, Capture
+### Perception (`src/AI/Perception/`)
+- `R12Schema.cs` - Immutable sensing facts and decision records (NoisePublished, NoiseHeardRelay, LivenessFact, RelayConsumption, NoiseConsumptionOutcome)
+- `NoiseEmitter.cs` - Deterministic source-aware emitter: source dedup, `(source_timestamp, source_event_class_rank, source_event_id)` flush order, monotonic `ulong fact_id`
+- `PerceptionHearingService.cs` - Independent 5 Hz hearing scheduler: bounded queues, deadline from source timestamp, stable guard snapshots, immutable relays, Perception-owned `entry_id`
+- `BurstSimulationService.cs` - Burst lifecycle: service-owned monotonic `ulong flight_handle_id`, fixed-step simulation, initial-overlap before spend, explicit terminal publication states
 
 ### FSM System (`src/AI/FSM/`)
-- `GuardFSM.cs` - Central FSM controller
+- `GuardFSM.cs` - Central FSM controller with registry cadence gating, relay dedup `(session_id, attempt_epoch, guard_eid, fact_id)`, and FSM-owned LivenessFact publication
 - `IGuardState.cs` / `GuardStateBase.cs` - State interface and base class
-- `PatrolState.cs` - Waypoint consumption with dwell/scan arcs
-- `InvestigateState.cs` - Target search, thoroughness-scaled look-around, give-up clock (D1)
-- `ChaseState.cs` - Live pursuit, spot-front hold, and Catch contract
+- `PatrolState.cs` - Waypoint consumption with dwell/scan arcs; the only state opening noise-led Investigate
+- `InvestigateState.cs` - Target search, thoroughness-scaled look-around, registered difficulty-scaled re-anchor formula
+- `ChaseState.cs` - Live pursuit, spot-front hold, and the state-owned Catch contract (injected PhysicsQueryProfile)
 - `GuardGoalMode.cs` - Parallel goal mode for catch-gate
 - `PatrolRoute.cs` - Authored route data structure
 
-### Navigation & Catch Contract (`src/AI/Navigation/`)
-- `GuardNavigator.cs` - NavMeshAgent wrapper with design speeds
-- `CatchEvaluator.cs` - Implements the full Catch contract (C1.4):
-  - Nav-goal gate (LivePursuit/HideSpotFront only)
-  - Path-arrival metric (NavMeshAgent.CalculatePath)
-  - Partial path validation (Physics.Linecast backstop)
-  - Catch timer with hysteresis and DeltaY tolerance
+### Navigation (`src/AI/Navigation/`)
+- `GuardNavigator.cs` - NavMeshAgent wrapper with authored patrol, investigate, and chase speeds
+- `CatchEvaluator.cs` - **[Obsolete] compatibility shell**; catch authority belongs to ChaseState/InvestigateState and the injected PhysicsQueryProfile
 
 ### Testing & Verification (`src/AI/Testing/`)
-- `PerceptionDriver.cs` - Simulated Perception for H.0 automated tests
+- `PerceptionDriver.cs` - Fixture adapter for scripted sensing facts (NOT the production hearing path)
 - `DecisionTap.cs` - Captures decision records for assertion
-- `FSMVerificationSuite.cs` - Complete test suite verifying all ACs
-- `GuardAISystem.cs` - Unity entry point component
+- `FSMVerificationSuite.cs` - Test suite verifying the FSM ACs
+- `GuardAISystem.cs` (root: `src/AI/`) - Production composition root: canonical clock check, profile validation, phase-coordinator wiring (`Burst.Advance -> FlushNoiseSources -> ResolvePendingBurstPublication -> ProcessHearingTick`)
 
 ## Key Formulas Implemented
-- **D1 Give-up Clock**: `t_giveup = t_giveup_base × s_diff × (1 + k_thorough × R/R_max)`
+- **D1 Give-up Clock**: `t_giveup = t_giveup_base × s_diff × (1 + k_thorough × R/R_max)` where `s_diff` is the registered difficulty scalar
+- **D1b Re-anchor Budget**: `t_reanchor = t_giveup_base × s_diff × (1 + k_thorough × R_reanchor/R_max) + t_noise_reanchor_extend`
 - **D2 Thoroughness Tau**: `tau = 1 + k_thorough × (R/R_max)`
 - **D3 Sweep Duration**: `t_sweep = t_sweep_base × tau`
 - **D4 Chase Speed**: `V_chase = rho_chase × V_run(runtime-max)`
@@ -55,12 +59,13 @@ The implementation follows a strict event-driven (event-not-command) architectur
 
 ## Design Constraints Honored
 - Strict 3-state cap (Patrol/Investigate/Chase)
-- Event-not-command boundary (no Perception queries)
-- Virtual tick clock determinism
+- Event-not-command boundary (no Perception queries; FSM reads only published facts)
+- Canonical virtual tick clock determinism (1/120 s; hearing 5 Hz and FSM 0.5 s derived cadences)
 - Per-tier suppression rule (investigate-commit/chase-entry)
-- Catch contract backstop (Physics.Linecast + NavMeshAgent)
+- Catch authority in ChaseState/InvestigateState with the injected PhysicsQueryProfile (CatchEvaluator is an obsolete shell)
 - GuardGoalMode parallel state for catch-gate
 - All tuning knobs consumed from registry (never re-declared)
+- Liveness facts are FSM-owned, immutable, and read by Perception at the previous boundary
 
 ## Acceptance Criteria Covered (H.0)
 1. Hard 3-state cap verification
@@ -81,10 +86,12 @@ This system requires:
 - No external dependencies
 
 Place all components on a GameObject with:
-- GuardAISystem (entry point)
+- GuardAISystem (production composition root; injects bus, clock, profiles, and phase coordinator)
 - GuardFSM
-- PerceptionDriver (for testing) or real Perception integration
+- VirtualTickClock (session-owned gameplay clock; driven via `GuardAISystem.AdvanceGameplayTime`)
 - DecisionTap (for testing/observation)
 - GuardNavigator
-- CatchEvaluator
 - PatrolRoute (authored by Level design)
+
+PerceptionDriver is a fixture adapter only; production hearing uses
+`PerceptionHearingService` wired by `GuardAISystem`.

@@ -1,8 +1,8 @@
 # Player Movement & Hide (HideSpot)
 
-> **Status**: In Review — `/design-review full` NEEDS REVISION (2026-08-27 re-review — 7 pins: D1 hold-match, ordering+datum, witnessable AC10, 2-pose telegraph); revision pass COMPLETE 2026-08-27 — 7/7 pins resolved (hold-match D1, 4-phase ordering+datum+re-entry deferral, witnessable AC10, 2-pose telegraph+onboarding, AC rewrites). **Pending lean re-review.**
-> **Author**: game-designer + user (full review — 6 specialists + CD synthesis)
-> **Last Updated**: 2026-08-27
+> **Status**: In Review — full review verdict MAJOR REVISION NEEDED (2026-09-01); revision pass started 2026-09-01 with scope, ownership, hunch, FSM-gate, overlap, escape, and accessibility decisions recorded. **Pending fresh full re-review.**
+> **Author**: game-designer + user (full review + revision decisions)
+> **Last Updated**: 2026-09-01
 > **Implements Pillar**: Pillar 2 (Fair Mind-Challenge) — primary; Pillar 4 (Visible Intelligence); supports Pillar 3
 
 ## Overview
@@ -31,9 +31,10 @@ confirm-empty — never hangs forever.
 The system therefore serves both planes at once: to the player it is the heart of the
 "None the wiser" fantasy (Pillar 2); to the AI it is a predictable, guard-reachable
 contract surface (Pillar 4) whose authored geometry is verified as part of the level's
-AC(d) certification sweep. Design order 4 — it sits directly on the Approved Player
-Controller's published state (stance, movement events) and is consumed by the Approved
-Perception and Guard AI FSM systems.
+AC(d) certification sweep. HideSpot is **Target scope**, not part of the smallest MVP
+room; the MVP fixture therefore does not need to contain a HideSpot. Design order 4 —
+it sits directly on the Approved Player Controller's published state (stance, movement
+events) and is consumed by the Approved Perception and Guard AI FSM systems.
 
 *Provisional assumptions — Physics (#18), Event bus (#15), Level (#8) are undesigned.
 HideSpot zones use the pinned trigger setup (`queryHitTriggers` OFF, dedicated layers) the
@@ -101,12 +102,21 @@ telegraph) · supports Pillar 3 (hide composes with Burst/Lure to create situati
    LOS break the accumulator fully resets (Perception R1). *This is the `HideSpot`-owned
    rule; Perception owns the ray geometry.*
 
-3. **Entry → the zone publishes events.** On the player's capsule entering an `Empty` spot's
-   trigger, the system: (a) sets state `Occupied`, (b) registers the player's
-   **`interior_position`** as the spot reference, (c) publishes a `HideSpot` occupied-zone
-   event (topic-based; consumed by Perception's R4 invisibility and by the FSM's hide-entry
-   detection). Exit publishes the corresponding empty event. Both events carry
-   `hide_spot_id` + `position`.
+3. **Entry → the zone publishes typed occupancy transitions only.** Only the player's
+   capsule may cause an occupancy transition; guard movement, verification, confirm-empty,
+   and capture never write `HideSpot.state`. On the player's capsule entering an `Empty`
+   spot's trigger, the system: (a) sets state `Occupied`, (b) retains the authored
+   **`interior_position`** as the spot reference, and (c) publishes exactly one typed
+   `HideSpotOccupied` transition for the continuous occupancy. Capsule exit publishes
+   exactly one typed `HideSpotEmpty` transition. Each transition carries
+   `session_id`, `attempt_epoch`, `hide_spot_id`, `interior_position`, immutable
+   `transition_id`, `occupied`, `timestamp`, and `publisher=HideSpot`; raw occupancy
+   transitions contain **no `entry_id`** and never grant witnessed authority. A
+   `transition_id` is unique within `(session_id, attempt_epoch, hide_spot_id)` and is
+   never reused. Perception owns hide-dive classification and allocates or relays
+   `entry_id` only in its derived hide-dive fact. The authoritative `Occupied`/`Empty`
+   state remains retained and queryable after publication until the next player-triggered
+   transition; consumers must not infer current occupancy from event absence.
 
 4. **Witnessed entry is the single defeat condition.** Hiding does **not** protect against a
    guard who *witnessed* the player enter — the whole `witnessed_entry_authority` contract
@@ -158,7 +168,7 @@ telegraph) · supports Pillar 3 (hide composes with Burst/Lure to create situati
 | Empty | player capsule enters trigger | Occupied | registers interior_position; publishes occupied zone event |
 | Empty | — | Empty | guard may sit at anchor; spot unoccupied |
 | Occupied | player capsule exits trigger | Empty | publishes empty zone event |
-| Occupied | spot cleared by guard's confirm-empty | Empty | **never** via give-up expiry / LOS break — only catch or confirm-empty (FSM C1.2/C1.3) |
+| Occupied | guard's confirm-empty while player remains inside | Occupied | confirm-empty is an FSM outcome only; it never writes spot state or clears occupancy while the capsule remains inside (FSM C1.2/C1.3) |
 | Occupied | guard's spot-front catch resolves | (spot stays Occupied; Capture occurs) | the *guard-gang* is separate from spot state; spot empties when player leaves |
 
 *(The guard's `MutableState`/goal-mode — `HideSpotFront` — is FSM-owned, not this GDD's.)*
@@ -168,8 +178,8 @@ telegraph) · supports Pillar 3 (hide composes with Burst/Lure to create situati
 | System | Direction | Interface |
 |---|---|---|
 | **Player Controller** (#11, Approved) | upstream | Consumes published stance/movement events + capsule bounds; provides the trigger-enter/exit detection origin. Movement-state → noise signature (unchanged outside/inside). |
-| **Perception** (#2, Approved) | consumed-by | Zone occupies publishes `HideSpot` occupied/empty events; Perception R4 (LOS-invisible while occupied), E3 (fix persists while held). |
-| **Guard AI FSM** (#1, Approved rev 4.1) | consumed-by | Zone events + `interior_position` feed the FSM's hide-dive detection (CR-FSM-01b) and M4 spot-front hold resolution; `spot_front_anchor` is the FSM's M4 hold datum (FSM #1 :416 is authored on the spot's approachable face). This GDD's pins make the resolutions always-terminating. **Datum identity pinned:** the zone publishes `interior_position` into the break fact's `spot_position` field; D1 certifies the same datum the FSM's C1.4 catch-gate resolves against. **⚠ Blocking dependency:** the occupancy-gated capture (D3) is an FSM rev 4.1 amendment not yet present — see Cross-system note. |
+| **Perception** (#2, Approved) | consumed-by | HideSpot publishes typed `HideSpotOccupied`/`HideSpotEmpty` transitions; Perception R4 applies LOS-invisibility while occupied and E3 preserves a witnessed fix while held. Perception owns derived `entry_id` allocation; raw occupancy contains none. |
+| **Guard AI FSM** (#1, Approved rev 4.1; C1.4a present) | consumed-by | Perception's derived hide-dive fact carries `interior_position` verbatim as `spot_position`, `hide_spot_id`, and the Perception-owned `entry_id`; the FSM consumes that fact for witnessed authority and M4 spot-front resolution. Raw occupancy transitions provide occupancy only and never create authority. `spot_front_anchor` plus guard-radius standoff defines the shared `guard_hold`. Approved FSM rev 4.1 C1.4a already specifies the occupancy gate, four-phase ordering, exit abort, and same-tick re-entry deferral. The remaining dependency is implementation and shared-fixture evidence for that existing contract; HideSpot owns occupancy publication/order evidence, while FSM owns abort and episode outcome. |
 | **Event bus** (#15, undesigned, provisional) | upstream | Zone events (topic-based, provisional). |
 | **Physics** (#18, undesigned, provisional) | upstream | Trigger setup: hide-spot zone on a dedicated layer, `queryHitTriggers` OFF; capsule/LOS shared config. |
 | **Suspicion/Grade** (#7, undesigned) | downstream | hide-entry Chase + witnessed capture are Chase escalation events (per concept/CR-CONCEPT-02); this GDD does not grade — it guarantees the entry facts that make it legible. |
@@ -189,8 +199,8 @@ over two legs (FSM #1 C1.4). This GDD's authored pins must guarantee **at least 
 leg resolves** from the hold position:
 
 ```
-resolvable(spot) ⟺ path(guard → proxy(interior_position)) ≤ catch_range
-                 ∨ ( EuclidXZ(guard → interior_position) ≤ catch_range
+resolvable(spot) ⟺ path(guard_hold → proxy(interior_position)) ≤ catch_range
+                 ∨ ( EuclidXZ(guard_hold → interior_position) ≤ catch_range
                      ∧ |ΔY(interior_position, floor_worst)| ≤ delta_y_tolerance
                      ∧ Linecast_clear(guard_hold, interior_position) )
 ```
@@ -198,12 +208,20 @@ resolvable(spot) ⟺ path(guard → proxy(interior_position)) ≤ catch_range
 Variables:
 - `path(a→b)` — NavMesh path distance (surface-constrained; always ≥ Euclidean), evaluated with the FSM's NavMesh agent pin (`agentType`/`areaMask` identical to runtime).
 - `proxy(x)` — `NavMesh.SamplePosition(x, maxdistance 0.4 inclusive)`, same-surface projection. **If `SamplePosition` returns `hit==false`, the path leg is `FAIL` (closed, not shifted datum)** — the 0.4 m disc is not an authoring fudge.
-- `guard_hold` — the FSM's M4 hold position: `spot_front_anchor + guardRadius standoff 0.40` along the approach normal (FSM #1 M4). **D1 certifies from `guard_hold`, not from the anchor alone** (revision note 2026-08-27 B5 hold-match). The 0.40 m standoff + 0.40 m proxy shift = 0.8 m combined slack is accounted: a spot that passes from the anchor but fails from `guard_hold` would otherwise yield a certified-pass → runtime-false-confirm-empty immunity; `margin 0.5` leaves only `0.5−0.40=0.1` standoff slack, so certification must use `guard_hold`.
+- `guard_hold` — the FSM's M4 hold position: `spot_front_anchor + guardRadius standoff 0.40` along the approach normal (FSM #1 M4). **D1 certification and runtime both use `guard_hold`, never the anchor alone.** The guard is considered arrived when `EuclidXZ(guard_position, guard_hold) ≤ eps_arrive`; the catch geometry then evaluates from that same hold position. The 0.40 m standoff + 0.40 m proxy shift = 0.8 m combined slack is accounted: a spot that passes from the anchor but fails from `guard_hold` would otherwise yield a certified-pass → runtime-false-confirm-empty immunity; `margin 0.5` leaves only `0.5−0.40=0.1` standoff slack, so certification must use `guard_hold`.
+- `eps_arrive` — the registered arrival tolerance applied identically by certification, runtime, and tick-boundary checks: `0.3 m` starter value, safe range `[0.2, 0.5] m`. It is an XZ-distance tolerance to the same sampled target or hold position, not a datum shift or catch-range allowance.
 - `floor_worst` — highest guard NavMesh floor among all spot-capable guards in the
   certified-route vicinity (worst-case |ΔY| reference — a spot certified only against a
   low route is immune against a higher-floor witness).
+- `guard_spawn` — one finite authored guard-origin record used by AC10's certification
+  population: `{guard_eid/archetype, world_position, route_id, approach samples,
+  speed profile}`. The set contains every enabled guard spawn/archetype that Level marks
+  as eligible to witness the spot; it is not an undefined runtime variable and cannot be
+  empty for a witnessable spot.
 - `EuclidXZ` — horizontal Euclidean distance, ignoring Y.
-- `Linecast_clear(a,b)` — shared sensing-config `Physics.Linecast` from `guard eye 1.6 m → interior_position +0.25 m (aperture height)`, World/solid mask, `QueryTriggerInteraction.Ignore`, unimpeded from `a` to `b`. A blocked backstop leg is a D1 failure (E5), not graceful handling.
+- `arrived_xz(a,b)` — `EuclidXZ(a,b) ≤ eps_arrive`; both certification and runtime use
+  this predicate for arrival at `guard_hold` or the same sampled target.
+- `Linecast_clear(a,b)` — shared sensing-config `Physics.Linecast` from `guard eye 1.6 m → interior_position +0.25 m (aperture height)`, World mask, `QueryTriggerInteraction.Ignore`, unimpeded from `a` to `b`. A blocked backstop leg is a D1 failure (E5), not graceful handling.
 
 **Certification bound is `catch_range` (5.5), NOT `catch_range + margin` (6.0).**
 Revision note 2026-08-26 (review Blk-2, systems-designer): the FSM's catch timer only
@@ -218,7 +236,8 @@ certifiable resolvability allowance.
 **Datum identity (revision note 2026-08-26 I2 + 2026-08-27 B4, ai-programmer):** the datum D1 certifies against — `proxy(interior_position)` — must be the SAME datum the FSM's runtime catch-gate resolves against (FSM C1.4, `proxy(spot_position)`). This GDD pins **verbatim copy** `interior_position == spot_position` (the zone publishes `interior_position` **verbatim** into the break fact's `spot_position` field, not collider center) — asserted by harness and runtime `Debug.Assert(dist(interior_position, spot_position) < 1e-4)` exact vector (AC12 `REJECT_PAYLOAD_DATUM_MISMATCH`). If Level ever authors them as distinct (deep datum vs zone-center), D1 and the FSM diverge by the interior depth and AC2's no-livelock claim breaks — this identity is a hard authoring invariant, not an inference; a 0.5 m delta moves `proxy` from pass to `PathInvalid` while certification used aperture.
 
 Constants (locked, `entities.yaml`): `catch_range` 5.5, `margin` 0.5 (⇒ retained-accrual
-pause bound 6.0), `delta_y_tolerance` 1.0 (inclusive), `navmesh_sample_maxdistance` 0.4.
+pause bound 6.0), `delta_y_tolerance` 1.0 (inclusive), `auth_margin` 0.2,
+`navmesh_sample_maxdistance` 0.4, and `eps_arrive` 0.3 m (safe range `[0.2, 0.5]` m).
 
 The invariant is **OR (not AND)** because the FSM's gate is OR over the two legs; the
 authoring contract is "at least one leg certifiably resolves." Pure Euclidean depth is
@@ -235,7 +254,9 @@ the worst-case guard floor (`floor_worst`, a dependency of D1):
 offset(interior_position, floor_worst) < delta_y_tolerance − auth_margin
 ```
 
-- `auth_margin` = 0.2 m (starter, tunable). E.g. offset ≤ 0.8 m for a 1.0 m tolerance.
+- `auth_margin` = 0.2 m (starter, tunable). For a 1.0 m tolerance, the authoring
+  condition is `offset < 0.8 m`; `offset = 0.8 m` is rejected, while the runtime
+  backstop itself remains inclusive through `|ΔY| ≤ 1.0 m`.
 - The milestone-0 committed value is asserted against the gate's **inclusive**
   `|ΔY| ≤ delta_y_tolerance` check. "Strictly below" alone invites a lazy
   over-tolerance datum (e.g. 1.05) that fails the backstop and leaves a path-failed
@@ -247,8 +268,9 @@ D1's backstop allows `|ΔY| ≤ 1.0` *inclusive*, but D2 certifies only `offset 
 D1-backstop-passable yet **D2-not-buildable**. This is intentional (conservative authoring
 margin) but the two ACs must not mislead: a spot verifiable by D1's resolvability leg alone
 is NOT buildable unless D2 also passes. The AC(d) sweep reports them as **separate, named
-failing signals** (a `|ΔY| = 0.999` D1-pass/D2-pass vs `1.001` D1-fail vs `0.801`
-D2-fail must never collapse into a single "rejected") — see AC4b and the harness spec.
+failing signals** (`|ΔY| = 0.799` D1-pass/D2-pass; `0.999` D1-pass/D2-fail;
+`1.001` D1-fail/D2-fail) and must never collapse them into a single "rejected" result —
+see AC4b and the harness spec.
 
 ### D3 — Spot-state authority (guard-episode vs. player-presence closure)
 
@@ -268,6 +290,21 @@ clears an already-empty spot at most). Consequences the FSM depends on:
   is the state predicate feeding FSM C1.4's dwell cancellation.
 
 **Virtual-tick ordering (revision note 2026-08-27 B2/B3, ai-programmer):** the same-tick race `Empty before capture check` and the `Empty(e1 close) → Occupied(fresh)` re-entry are pinned to a **4-phase virtual tick** (not wall-clock `FixedUpdate/Update` vs fact topics): (1) Physics triggers collected → (2) HideSpot flushes `Empty`/`Occupied` synchronously → (3) `Perception.CollectFacts()` consumes the zone fact → (4) `FSM.Tick()` evaluates the capture single-clock. Same-tick exit wins: `spot.state==Empty` is evaluated **before** `gate ∧ timer≥t_catch ∧ dwellComplete`. Same-tick exit+re-entry defers allocation: if `Empty` was published this tick before allocation phase, the fresh `Occupied` does **not** allocate a new `witnessed_entry_authority` episode until the next tick (and the FSM's `no-alloc-when-live` is evaluated at tick-start OR if `Empty` published this tick → no allocation) — so a fresh unwitnessed re-entry never inherits stale authority (E3). HideSpot owns the synchronous flush/order (verifiable on H.0 trace: Empty index < Capture index); the FSM owns the abort outcome — **JOINT-CONTINGENT** (see Cross-system note, AC8).
+
+### Lifecycle and epoch reset
+
+Capture, death, respawn, scene reload, full-room restart, segment reset, pool/unpool,
+and every `attempt_epoch` transition pass through the shared lifecycle barrier. At that
+barrier HideSpot: (1) clears queued occupancy transitions and transient player
+associations; (2) invalidates old-epoch occupancy, hide-dive, and witnessed-authority
+facts; (3) prevents old-epoch facts from suppressing LOS or producing capture; and
+(4) reconciles each spot from a fresh capsule-containment query in the new
+`(session_id, attempt_epoch)`. A pooled or unpooled spot is not restored to `Occupied`
+merely because its previous state was occupied; it becomes `Occupied` only when that
+fresh query confirms the player's capsule is inside, then publishes a new typed
+transition with a new immutable `transition_id`. The lifecycle owner, not the FSM or a
+pool callback, increments `attempt_epoch`; reset completion is atomic before the next
+playable virtual tick.
 
 ## Edge Cases
 
@@ -289,7 +326,7 @@ not a bolt into a sightline that re-sights immediately.
 **E3 — Player re-enters the same spot (exit then dive again) during a hold.**
 The player exits (spot → Empty) then re-enters (spot → Occupied). A witness who saw the
 *original* entry may or may not re-acquire sight; if the re-entry is unwitnessed and sight
-was lost, the spot is a fresh clean entry. **Closure requirement (revision note 2026-08-26 I4 + 2026-08-27 B3, ai-programmer):** the stale-episode authority is closed only by the FSM's **exit-abort** (the Blk-1 amendment — hold aborts to confirm-empty on player-exit, episode e1 closes, timer resets per C1.4 "resets only on … confirm-empty"). The spot's own re-published zone facts do **not** re-seed the FSM by themselves (the FSM's hide-entry input is Perception's sight-of-entry break fact, published only on a *witnessed* entry). Ordered `Empty(e1 close) → Occupied(fresh)` in the **same tick defers allocation** to the next tick (D3 4-phase pin: if `Empty` published this tick before allocation, no new episode allocates this tick) — so a fresh unwitnessed re-entry never inherits stale `witnessed_entry_authority` even when exit+re-entry land same tick. So a fresh unwitnessed re-entry inherits no stale witnessed-authority *iff* the exit-abort + deferral exist; without it (FSM rev 4.1 as-is), the stale hold's timer continues and an unwitnessed re-entry can be falsely captured. This GDD records the abort as blocking (Cross-system note); it does not assume it.
+was lost, the spot is a fresh clean entry. **Closure requirement (revision note 2026-08-26 I4 + 2026-08-27 B3, ai-programmer):** the stale-episode authority is closed only by the FSM's **exit-abort** (the Blk-1 amendment — hold aborts to confirm-empty on player-exit, episode e1 closes, timer resets per C1.4 "resets only on … confirm-empty"). The spot's own re-published zone facts do **not** re-seed the FSM by themselves (the FSM's hide-entry input is Perception's sight-of-entry break fact, published only on a *witnessed* entry). Ordered `Empty(e1 close) → Occupied(fresh)` in the **same tick defers allocation** to the next tick (D3 4-phase pin: if `Empty` published this tick before allocation, no new episode allocates this tick) — so a fresh unwitnessed re-entry never inherits stale `witnessed_entry_authority` even when exit+re-entry land same tick. The synchronized FSM C1.4a contract consumes the Empty event before capture and applies the same-tick deferral. Runtime implementation and integration evidence remain pending; this GDD does not treat the contract as executed behavior.
 
 **E4 — Two guards both hold `HideSpotFront` on the same spot.**
 Both witnessed the entry. Each guard runs its own dwell/catch against the same static
@@ -351,27 +388,37 @@ FSM. A re-sight during the visit can only re-enter `HideSpotFront` through a fre
 witnessed entry, which is closed by the same authority rule.
 
 **E9 — Spot trigger overlaps a second spot's trigger.**
-Level-authoring error; a player inside the overlap is inside both spots. The system
-deterministically picks the innermost/nearest `interior_position` as the active datum
-for LOS-invisibility and event publication; both spots still flip to `Occupied` on
-entry and `Empty` on exit. Overlapping spots are discouraged at AC(d) but not, on their
-own, a capture-immunity or false-exposure route (deterministic selection keeps
-perception/FSM unambiguous).
+Overlapping HideSpot volumes are an authoring error and are **rejected for the initial
+implementation**. The editor sweep must fail the scene with both `hide_spot_id` values,
+the overlap volume, and a stable rejection code before the level can be certified. Runtime
+selection between overlapping spots is therefore not a gameplay rule: no shipped content
+may rely on nearest-datum selection, dual occupancy, or overlap hysteresis. This keeps
+per-spot occupancy, effective concealment, and witnessed-entry authority unambiguous;
+a future overlap design requires a separate GDD revision and review.
 
 **E10 — Guard resolves catch exactly at the player-exit tick.**
 The catch single-clock (gate ∧ timer ≥ t_catch ∧ dwell complete) and the player-exit event land on the same tick. Resolution order is pinned to the **4-phase virtual tick** (D3): the player-exit event transitions the spot to `Empty` in phase 2 **before** the hold's capture check runs in phase 4 (D3), so the catch is cancelled and the hold resolves confirm-empty/fruitless. The player who exits in the same tick escapes — no false capture, no race — and both boundary simultaneities (exit-at-dwell-tick and exit-one-tick-after) escape. Verifiable on H.0 trace: `Empty` publish index < `Capture` check index on that tick (AC8 joint).
+
+**E11 — Invalid or unbounded certification input.** A missing `guard_spawn`, empty
+witness population, missing approach/escape sample, failed `NavMesh.SamplePosition`,
+non-finite coordinate, negative/zero speed, malformed route, or unbounded sampler is a
+closed failure. The sweep reports the input and rejection code; it never substitutes a
+different datum, assumes a default spawn, or vacuously certifies the spot. A spot may
+be treated as sanctuary-only only after the finite witness sampler proves that every
+eligible guard/approach sample cannot witness the entrance.
 
 ## Dependencies
 
 | System | Dir | Dependency | Bidirectional? |
 |---|---|---|---|
 | **Player Controller** (#11, Approved) | upstream | Consumes published stance/movement events + capsule bounds; provides the trigger-enter/exit detection origin. Movement-state → noise signature (unchanged outside/inside spot). | Yes — the controller's Movement-state transition + noise signature must list HideSpot as a consumer |
-| **Perception** (#2, Approved) | consumed-by | Consumes `HideSpot` occupied/empty zone events for R4 LOS-invisibility (while `Occupied`) + E3 fix-persists-while-held. | Yes — Perception R4/E3 must cite the hide-zone fact as upstream |
-| **Guard AI FSM** (#1, Approved rev 4.1) | consumed-by | Zone events + `interior_position` (verbatim `1e-4`) feed hide-dive detection (CR-FSM-01b) + M4 spot-front hold; `spot_front_anchor` +0.40 standoff = `guard_hold` certification origin (B5 hold-match); D1/D2/D3 pins make the resolutions always-terminating (never capture immunity). **⚠ BLOCKING DEPENDENCY FOR IMPLEMENTATION, JOINT-CONTINGENT FOR APPROVAL (2026-08-26 Blk-1 → expanded 2026-08-27 B2/B3):** D3's occupancy-gated, exit-aborting, 4-phase-ordered capture (AC3/AC6/AC8/AC13/E3/E10) + re-entry deferral + stagger accrual requires an FSM amendment that rev 4.1 does not contain — `spot.state == Occupied` conjunct on the single-clock + player-exit/Empty consumption + 4-phase `Empty`-before-capture ordering + same-tick re-entry deferral + mid-dwell-exit-no-capture AC + stagger carry-forward. Hide owns the synchronous flush/order + datum (verifiable on H.0 trace); FSM owns the abort outcome. Recorded; see Cross-system note below OQ — GDD may be Approved-Contingent after its 7 pins, implementation BLOCKED until rev 4.2. | Yes — FSM M4/C1.3/C1.4 must cite these pins + the occupancy-gated, ordered capture (bounded rev 4.1 amendment, standing obligation) |
+| **Perception** (#2, Approved) | consumed-by | Consumes typed `HideSpotOccupied`/`HideSpotEmpty` transitions for R4 LOS-invisibility (while `Occupied`) + E3 fix-persists-while-held; allocates derived `entry_id` independently of raw occupancy. | Yes — Perception R4/E3 must cite the hide-zone fact as upstream |
+| **Guard AI FSM** (#1, Approved rev 4.1 baseline; rev 4.2 amendment required) | consumed-by | Perception's derived hide-dive fact, not raw occupancy, supplies witnessed-entry authority, `entry_id`, `hide_spot_id`, and `spot_position` (verbatim `1e-4`) for M4. `spot_front_anchor` +0.40 standoff = `guard_hold` certification origin. **BLOCKING IMPLEMENTATION DEPENDENCY:** the bounded rev 4.2 amendment must add the occupancy conjunct, Empty consumption, four-phase Empty-before-Capture ordering, exit abort, same-tick re-entry deferral, and stagger carry-forward. HideSpot owns occupancy publication and ordering evidence; FSM owns the abort and episode outcome. Implementation remains blocked until that amendment and its tests land. | Yes — FSM M4/C1.3/C1.4 must cite these pins and the rev 4.2 occupancy-gated capture contract |
 | **Suspicion/Grade** (#7, undesigned, provisional) | downstream | hide-entry Chase + witnessed capture are Chase escalation events (concept/CR-CONCEPT-02); this GDD does not grade — it guarantees the entry facts that make grading legible. |
 | **Level** (#8, undesigned, provisional) | downstream | Authors spots + the three pinned geometry values; AC(d) verifies D1 resolvability, D2 margin, guard-reachability. |
 | **Event bus** (#15, undesigned, provisional) | upstream | Zone events (topic-based, provisional). |
 | **Physics** (#18, undesigned, provisional) | upstream | Trigger setup — hide-spot zone on a dedicated layer, `queryHitTriggers` OFF, capsule/LOS shared config. |
+| **Player Noise** (#3, In Review) | upstream | Burst pickup state (Placed/Carried) and full-room restart restoration are described in the canonical lifecycle transition table (entities.yaml / player-noise.md). |
 
 ### Bidirectional cross-refs (rule: if A depends on B, B's doc must mention A)
 
@@ -382,6 +429,13 @@ satisfied where those GDDs already cite `HideSpot` / `interior_position` /
 `spot_front_anchor` (FSM M4 :416; Perception R4). Any reverse leg found missing is a
 **consistency-check item**, not silently left one-way — it is scheduled at the next
 `/consistency-check` run.
+
+> **Cross-document authority note (lifecycle / attempt_epoch).** The canonical lifecycle
+> transition table for `attempt_epoch` increments — covering death, capture, respawn, segment
+> reset, full-room restart, scene reload, new playable attempt, pause/resume, and pool/unpool
+> — is authoritative in `design/registry/entities.yaml` and reproduced verbatim in
+> `player-noise.md §Ownership`. Player Noise, Perception, Guard AI FSM, and this GDD
+> all reference the same table; no file owns a distinct version.
 
 ### Provisional flags
 Event bus (#15) + Physics (#18) + Level (#8) undesigned — contracts defined here,
@@ -421,19 +475,23 @@ the retained-accrual pause bound (`catch_range + margin`) — a **coordinated re
 and depth bounds trace to the FSM C1.4 gate (source: `guard-ai-fsm.md`) — consumed,
 never re-derived.
 
-## Visual/Audio Requirements
+## Behavioral Feedback Requirements
 
 - **Spot-front telegraph (Pillar 4, revision note 2026-08-27 B7 — BLOCKING for P2, not merely advisory):** the M4 hold is **tier-discriminated at a glance** (no dive-instant "saw-you" ping, no occupied-indicator — no UI leak):
   - *Hunch / Investigate-tier* (noise/alert, no `witnessed_entry_authority`): **standing lean/scan** at `spot_front_anchor` (~1.0 s, torch sweep, no kneel, no capture clock).
   - *Witnessed / Chase-tier* (including sub-threshold `a_pre_break ≥ threshold_applied`): **committed kneel** at `spot_front_anchor` (1.5 s `t_spotfront_verify`, distinct anim, single-clock `gate ∧ timer≥t_catch ∧ dwellComplete`).
   - A hunch **never kneels** — by FSM M4 gate — so kneel itself discriminates witnessed vs hunch for the full dwell; both tiers would otherwise share the same 1.5 s hold and be indistinguishable until dwell end.
-  - **Commitment onset at detection:** on witnessed detection, guard orientation snaps to the spot and movement retargets *immediately*; a **2D-private audio bark** fires within **0.2 s** ("check that wardrobe" / gear shift) — causal link before the 4–6 s approach transit, not after arrival.
-  - **Occlusion-safe leg:** the verify carries **locational audio** (fabric/gear + spot-front SFX) audible through an enclosed wardrobe (back-wall-facing 30–60° FOV), so the telegraph is not single-point visual failure (UX-01). Any world-space marker, if used, must be tied to `GuardGoalMode==HideSpotFront` regardless of tier, not to cue timing, or it leaks witnessed vs clean.
-  - It must read unambiguously as *"this guard is coming for THIS spot, and that means he saw you dive"* — because it is the player's only readable signal that the catch is being resolved (readability contract, Section B). This is a **telegraph-sharpening** requirement (poses + onset + audio), not a new mechanic.
+  - **Commitment onset at detection:** on witnessed detection, guard orientation snaps to the spot and movement retargets *immediately*; the onset must be readable from that direction change and retarget behavior before the 4–6 s approach transit, not only after arrival. No bark or other direct statement that the guard saw the entry is part of the contract.
+  - **Occlusion-safe leg:** when the camera faces away or the spot is enclosed, the approach, orientation, kneel, and spot-front verification remain readable from world-space guard behavior; no audio leg is required. Any world-space marker, if used, must be tied to `GuardGoalMode==HideSpotFront` regardless of tier, not to cue timing, or it leaks witnessed vs clean.
+  - It must read unambiguously as *"this guard is committed to THIS spot"* through direction, approach, hold, kneel, and verification behavior. The behavior communicates commitment without asserting a cause to the player or exposing hidden authority state. This is a **telegraph-sharpening** requirement (behavioral onset and poses), not a new mechanic.
+  - **Accessibility fallback:** the witnessed-entry commitment must remain identifiable with audio muted, captions disabled, reduced-motion enabled, or the camera facing away. The committed kneel/approach uses a camera-independent, non-color visual distinction (silhouette/pose plus directional world-space motion); color alone, HUD-only text, and a sound-only cue are insufficient. Captions and audio are optional presentation layers and must not be required to identify commitment or its cause. Reduced-motion mode shortens or removes camera/animation flourish without removing the pose, onset, or direction cue.
 - **Onboarding (3 beats / 2 segments, not 1 room):** Room A clean still → walk-past (LOS break is sanctuary); Room B clean + walk-inside → hunch stand-look walk-away (noise inside ≠ capture, hunches resolve fruitless — stillness-is-the-price, not "moving breaks hiding"); Room C graze dive under a **wary guard with sinking threshold marker visible** → kneel+bolt (sub-threshold witnessed possible when wary). Teaches the 5 distinctions without collapsing them into one laundry that teaches "moving breaks hiding."
 - **Occupied-spot clarity (anti-leak):** a spot whose interior is occupied should not be visually distinguishable to the player as "safe/unsafe" by geometry alone. Safety is earned by *clean entry*, not appearance — no "safe-house glow" that leaks game state.
-- **Audio:** HideSpot zone transitions play a **player-private 2D UI SFX** (bus `SFX_UI`, 0% spatialize, **not** routed to hearing, −18 LUFS, 200–400 ms cloth/rustle, debounced per active-datum per AC9/AC14 — not per overlapping volume, identical for clean/witnessed so it does not leak authority). `HideSpot empty` has priority over `Capture` on the same tick (E10). A noise-heard while inside does not alter this cue. Interior ambience may duck `4 dB ±2` lerp `0.3 s in / 0.4 s out` low-pass `1200 Hz` on `Ambience/Music` buses never `Player_Foley` (optional, director's call) — or strike as post-MVP via single `AudioMixer Snapshot`.
-- All visual/audio here is **ADVISORY** (Visual/Feel evidence tier) — not BLOCKING for Logic, **except** the tier-discriminated telegraph + onset + audio leg which is **BLOCKING for P2 readability** (without it `must read unambiguously` is unfalsifiable).
+- **Audio is non-authoritative and optional:** ambience or transition SFX may support presence, but must be identical for clean and witnessed entry and must never communicate `witnessed_entry_authority`, capture eligibility, or the cause of a guard's commitment. Audio is not routed into hearing and is not required for any HideSpot rule or accessibility path; no bark, caption, or sound-only signal is specified.
+- All presentation here is **ADVISORY** (Visual/Feel evidence tier) — not BLOCKING for
+  Logic. The tier-discriminated behavioral telegraph and commitment onset are the
+  **blocking readability contract**; audio, captions, color, HUD, and camera framing
+  cannot be the sole evidence of success or failure.
 
 ## UI Requirements
 
@@ -453,10 +511,10 @@ unit/integration suites against the shared fixture — never re-tested here.
 
 ### Authoring-time (exercisable now via the standalone editor-sweep harness in OQ-H1; certified at Level #8 AC(d) once it lands)
 
-- **AC4 — D1 resolvability (blocking).** Driven by the **hide-spot editor sweep harness** (OQ-H1), a menu tool that loads the current scene, enumerates all authored `HideSpot` volumes, and for each spot evaluates D1 against every guard in the spot's guard population. Assert **at least one** D1 leg resolves from the hold position `guard_hold = spot_front_anchor + 0.40 standoff` (B5 hold-match) against `floor_worst` = highest guard floor in that population — `path(guard_hold→proxy(interior_position))` ≤ 5.5 **OR** (`EuclidXZ(guard_hold→interior_position)` ≤ 5.5 ∧ `|ΔY(interior_position, floor_worst)|` ≤ 1.0 *inclusive* ∧ `Linecast_clear(guard eye 1.6→interior+0.25, World/solid, Ignore triggers)`) — where `proxy` = `NavMesh.SamplePosition(interior_position, 0.4 inclusive)` with `hit==false ⇒ path leg FAIL` (not shifted datum), evaluated with the FSM's `agentType`/`areaMask` and bake version. The sweep **materializes `floor_worst`** per spot (logs the inducing guard + value), the per-leg numeric result (path distance, EuclidXZ, |ΔY|, Linecast pass/fail, proxy hit), and the D2 verdict, so a human can audit which witness certified the spot and *which pin drove any rejection*. It asserts against `proxy(interior_position)` **verbatim**, never raw `spot_position` or collider center; datum mismatch fails with `REJECT_PAYLOAD_DATUM_MISMATCH` (AC12).
+- **AC4 — D1 resolvability (blocking).** Driven by the **hide-spot editor sweep harness** (OQ-H1), a menu tool that loads the current scene, enumerates all authored `HideSpot` volumes, and for each spot evaluates D1 against every guard in the spot's guard population. Assert **at least one** D1 leg resolves from the hold position `guard_hold = spot_front_anchor + 0.40 standoff` (B5 hold-match) against `floor_worst` = highest guard floor in that population — `path(guard_hold→proxy(interior_position))` ≤ 5.5 **OR** (`EuclidXZ(guard_hold→interior_position)` ≤ 5.5 ∧ `|ΔY(interior_position, floor_worst)|` ≤ 1.0 *inclusive* ∧ `Linecast_clear(guard eye 1.6→interior+0.25, World, Ignore triggers)`) — where `proxy` = `NavMesh.SamplePosition(interior_position, 0.4 inclusive)` with `hit==false ⇒ path leg FAIL` (not shifted datum), evaluated with the FSM's `agentType`/`areaMask` and bake version. The sweep **materializes `floor_worst`** per spot (logs the inducing guard + value), the per-leg numeric result (path distance, EuclidXZ, |ΔY|, Linecast pass/fail, proxy hit), and the D2 verdict, so a human can audit which witness certified the spot and *which pin drove any rejection*. It asserts against `proxy(interior_position)` **verbatim**, never raw `spot_position` or collider center; datum mismatch fails with `REJECT_PAYLOAD_DATUM_MISMATCH` (AC12).
   - **Temporary population pin (replacing OQ-H3 for now):** all `GuardNPC` instances whose NavMesh route's closest point to `spot_front_anchor` ≤ `catch_range` (5.5) — where closest point = `min Euclid to waypoint polyline` (not NavMesh distance), harvestable at edit time, re-evaluated when Level #8 lands. If this set is **empty** for a spot, the spot is **not buildable** (certification cannot be proven) — an empty population is a FAIL with `REJECT_EMPTY_POPULATION`, never a vacuous pass. A guard outside the set can still witness (Perception is global) — Level must reconcile "can witness" vs "in certified population" (OQ-H3).
 
-- **AC4b — D1/D2 boundary discrimination (blocking).** Four synthetic probe spots against **pinned `floor_worst=0.0` with `offset = |ΔY|` absolute** (so offset and |ΔY| are not dual values) prove the "most common re-authoring error" is *observable* with **distinct failure substrings** and **≥0.05 straddle** (per H.0b, not 0.001 flake): (a) `|ΔY|` = 0.75 → both D1 backstop (`≤1.0` inclusive) and D2 (`<0.8` strict) **PASS**, certifies; (b) `|ΔY|` = 1.05 (derived as `delta_y_tolerance + 0.05`, not hard-coded `1.001`) → D1 backstop **FAILS** (`REJECT_D1_BACKSTOP_DELTA_Y`), D2 passes — sweep reports D1 distinctly; (c) `|ΔY|` = 0.85 (derived as `delta_y_tolerance − auth_margin + 0.05`, not `0.801`) → D2 **strict FAILS** (`REJECT_D2_AUTH_MARGIN_STRICT`, `offset <0.8` strict), D1 passes — sweep reports D2 distinctly; (d) **path-vs-backstop probe** (E6): Euclidean depth short but `path(guard_hold→proxy) >5.5` with `Linecast_clear==true` → backstop leg rescues (PASS), and with `Linecast_clear==false` → both legs fail (`REJECT_BOTH_LEGS`). Literals are registry-derived at setup (`delta_y_tolerance=1.0`, `auth_margin=0.2`); a tester must be able to tell which pin a re-authoring error violates by substring alone.
+- **AC4b — D1/D2 boundary discrimination (blocking).** Four synthetic probe spots against **pinned `floor_worst=0.0` with `offset = |ΔY|` absolute** (so offset and |ΔY| are not dual values) prove the "most common re-authoring error" is *observable* with **distinct failure substrings** and **≥0.05 straddle** (per H.0b, not 0.001 flake): (a) `|ΔY|` = 0.75 → both D1 backstop (`≤1.0` inclusive) and D2 (`<0.8` strict) **PASS**, certifies; (b) `|ΔY|` = 1.05 (derived as `delta_y_tolerance + 0.05`, not hard-coded `1.001`) → D1 backstop **FAILS** (`REJECT_D1_BACKSTOP_DELTA_Y`), and D2 also fails because the same datum is above the strict `<0.8` authoring bound — sweep reports both failed pins; (c) `|ΔY|` = 0.85 (derived as `delta_y_tolerance − auth_margin + 0.05`, not `0.801`) → D2 **strict FAILS** (`REJECT_D2_AUTH_MARGIN_STRICT`, `offset <0.8` strict), D1 passes — sweep reports D2 distinctly; (d) **path-vs-backstop probe** (E6): Euclidean depth short but `path(guard_hold→proxy) >5.5` with `Linecast_clear==true` → backstop leg rescues (PASS), and with `Linecast_clear==false` → both legs fail (`REJECT_BOTH_LEGS`). Literals are registry-derived at setup (`delta_y_tolerance=1.0`, `auth_margin=0.2`); a tester must be able to tell which pin a re-authoring error violates by substring alone.
 
 - **AC5 — Authoring rejection (blocking).** (i) A spot failing D1 (both legs) or D2 is
   **not buildable** — the authoring tool / CI sweep refuses it (venue: Level AC(d) once it
@@ -467,39 +525,79 @@ unit/integration suites against the shared fixture — never re-tested here.
   on a **synthetic** D1-failing spot authored in the FSM fixture, not a shipped spot.
   HideSpot owns only AC5(i); it does NOT own the runtime backstop.
 
-- **AC10 — Back-exit walkability / escape invariant (blocking).** Every **witnessable** spot (Core Rule 8, defined as `witnessable(spot) := ∃G` in the spot's certified population where G's LOS cone can cover the entrance at dive or within `dwell + pathTime(G, spot_front_anchor)` at `V_investigate`) has a NavMesh-reachable point at/beyond its back exit, sampleable within `navmesh_sample_maxdistance` 0.4 **inclusive** (`NavMesh.SamplePosition(backExit, 0.4) hit==true`), with a **path `front→escape` that exists** and that escape point is **outside G's current LOS cone** within the approach transit + dwell (E2 relocation window, cone-exit achieved; `pathLen/walkSpeed ≤ transit+dwell` with `transit = path(guard spawn→anchor)/V_investigate` and dwell `t_spotfront_verify 1.5`; e.g. 2 m at `V_chase 7.5` ⇒ ~1.77 s). The harness asserts per witnessable spot: (i) Sample success (ii) path front→escape exists (iii) escape outside G's LOS cone at escape time (iv) `pathLen/walkSpeed ≤ transit+dwell`; logs inducing guard + values; fails CI non-zero; persists artifact `production/qa/evidence/hide-spot-sweep-[date].md`. A sanctuary-only spot (not witnessable) is exempt from AC10 but must be **verifiably non-witnessable via exhaustive LOS sweep** sampled at guard waypoints +5 m approach positions covering the entrance — empty population FAIL alone is insufficient (a global witness outside the certified set could still witness; AC4 population hole). *AC10 is kept binding* (CD ruling on disagreement D1): the back exit is load-bearing for the "you created the situation" escape fantasy — not relaxed, but scoped to witnessable spots so density is protected via placement/pacing (Core Rule 8's density budget) rather than by gutting the rule. Expected escape movement is **crouch-walk silent** (walk 4.0 m / run 6.0 m inside is audible per Core Rule 6 and self-defeats escape; interiors must suppress footstep to crouch level or require crouch for silent exit).
+- **AC10 — Back-exit walkability / escape invariant (blocking).** Every **witnessable** spot has an authored `back_exit` marker and a NavMesh-reachable escape point at or beyond that marker. `guard_spawn` is the finite authored set of every enabled witness-capable guard spawn/archetype for the scene; each record supplies a world origin, route, speed profile, and a finite set of authored approach samples. The certification sweep enumerates **all** `guard_spawn` records, all `N_approach` samples for each record, and all `N_escape` route/escape samples; “exhaustive” means exhaustive over this declared finite domain, not an unbounded continuous search. The maximum relevant guard speed includes every mode that can induce the hold: `V_relevant = max(V_patrol, V_investigate, V_chase)`, with registered `V_chase = 7.50 m/s`. For each candidate the harness asserts: (i) `NavMesh.SamplePosition(back_exit, navmesh_sample_maxdistance)` succeeds; (ii) a path exists from the player's authored interior exit origin to the escape point; (iii) the player's full capsule clears the spot aperture and solid geometry; (iv) the player is outside the inducing guard's live LOS cone at escape time; and (v) `pathLen / V_escape_crouch <= transit + t_spotfront_verify`, where `transit = path(guard_spawn, guard_hold) / V_relevant` and arrival to `guard_hold` uses `arrived_xz(..., guard_hold)` with `eps_arrive`. A valid escape specifically uses crouched movement (`stance=Crouched`, crouch-walk); walking and running remain hearing-eligible per Core Rule 6 and do not satisfy AC10. The default workload is `N_guard=30`, `N_approach=16` per guard, and `N_escape=8` route/escape samples: at most `Q_candidates=30×16×8=3,840` candidate evaluations and `Q_queries≤19,200` bounded NavMesh/physics queries when each candidate uses no more than five queries. The authoring sweep target is p95 ≤500 ms per spot at that workload on the project's declared reference authoring machine; this target is currently unverified. The harness persists the escape origin, clearance capsule, inducing guard, approach sample, transit, dwell, cone-exit time, and speed in `production/qa/evidence/hide-spot-sweep-[date].md`; missing, malformed, non-finite, or unbounded values fail closed. A sanctuary-only spot is exempt only after the same finite sweep proves that no eligible guard/approach sample can witness the entrance; an empty `guard_spawn` set is `REJECT_EMPTY_POPULATION`, never sufficient proof.
 
 - **AC11 — D3 state-table never-edges (blocking).** For every guard/FSM outcome (give-up expiry, LOS break, confirm-empty, catch, post-chase sweep) against a player-inside spot, `state` remains `Occupied`; only the capsule-exit event writes `Empty` (player-occupancy-authoritative). A guard's confirm-empty must not flip a spot to `Empty` while the player is inside (would strip LOS-invisibility for another guard's witness — two-guard case, D3).
 
-- **AC12 — Zone-event payload integrity (blocking).** Each occupied/empty event carries the correct `hide_spot_id` + `interior_position` **verbatim** within pinned epsilon `1e-4` exact vector (`dist(interior_position, spot_position) < 1e-4`, not `0.4`), so downstream consumers never act on a wrong datum; mismatch fails with `REJECT_PAYLOAD_DATUM_MISMATCH`. The `0.4` is only the NavMesh proxy sample disc, not a datum tolerance to launder a 0.6 m deep-vs-aperture error.
+- **AC12 — Typed occupancy payload integrity (blocking).** Each `HideSpotOccupied` or
+  `HideSpotEmpty` transition carries the correct `hide_spot_id` + `interior_position`
+  **verbatim** within pinned epsilon `1e-4` exact vector
+  (`dist(interior_position, spot_position) < 1e-4`, not `0.4`), an immutable
+  `transition_id`, and no raw `entry_id`. Duplicate transition delivery is idempotent
+  by `transition_id`; a datum mismatch fails with `REJECT_PAYLOAD_DATUM_MISMATCH`.
+  The `0.4` is only the NavMesh proxy sample disc, not a datum tolerance to launder a
+  0.6 m deep-vs-aperture error.
 
 ### Runtime (owned facts + delegation)
 
 - **AC1 — Occupied-zone fact (owned).** While the capsule is inside and `Occupied`, the
-  spot posts exactly one occupied-zone fact per continuous occupancy (no duplicate /
-  re-fire), carrying `hide_spot_id` + `interior_position`, on the declared named channel
-  (`HideSpotOccupied`). LOS-invisibility + accumulator behavior is delegated to the
-  Perception R4/R1 suite (R4 requires the fact; R1 requires reset-on-break).
+  spot retains the current state and posts exactly one `HideSpotOccupied` transition per
+  continuous occupancy (no duplicate/re-fire), carrying `hide_spot_id`,
+  `interior_position`, and immutable `transition_id`, with no raw `entry_id`. The state
+  remains queryable until the next player-triggered exit; LOS-invisibility + accumulator
+  behavior is delegated to the Perception R4/R1 suite (R4 requires the fact; R1 requires
+  reset-on-break).
 
-- **AC2 — Entry-fact + D1 termination (owned).** On capsule entry to an `Empty` spot, one
-  occupied fact posts (the FSM's hide-dive ingredient). The hold's reach-gate cannot
-  livelock on a reachable spot because D1 resolves (AC4). M4 hold / catch resolution is
-  FSM-suite-owned.
+- **AC2 — Entry occupancy fact + D1 termination (owned).** On capsule entry to an `Empty`
+  spot, exactly one occupied fact posts. Perception may classify a witnessed hide-dive and
+  allocate/relay `entry_id` in its derived fact; the raw occupancy fact never grants
+  authority. The hold's reach-gate cannot livelock on a reachable spot because D1 resolves
+  (AC4). M4 hold / catch resolution is FSM-suite-owned.
 
 - **AC3 — Same-tick exit ordering (owned ordering; capture-abort is JOINT-CONTINGENT).** The `Empty` fact publishes **synchronously in phase 2 before any FSM tick phase 4 consumes the current-tick fact set** (D3 4-phase: Physics→HideSpot flush→Perception→FSM, `Empty` before `gate ∧ timer≥t_catch ∧ dwellComplete`). HideSpot owns the **order** (verifiable on H.0 trace: Empty publish index < Capture check index same tick); the FSM owns the **abort outcome**. Delegated-contingent: capture aborts to confirm-empty/fruitless on player-exit, resolving both boundary simultaneities (exit-at-dwell-tick and exit-one-tick-after still escape) — FSM suite (E10) — marked **JOINT-CONTINGENT / DELEGATED-BLOCKED** until FSM rev 4.2 lands the occupancy conjunct + exit-ordering + mid-dwell-exit AC.
 
 - **AC6 — D3 authority + datum identity (owned).** Spot state is player-occupancy-authoritative; a guard's confirm-empty never writes `Empty` while the capsule is inside (two-guard case: A's empty verification does not strip B's LOS-invisibility). Two guards at the same spot resolve the **same D1 certification verdict** against the same `floor_worst` shared datum — i.e. both spots are D1/AC4-certifiable or both are not. This is **not** a claim of identical *runtime* resolution: the FSM's runtime backstop computes `|ΔY|` **per guard** against that guard's own floor (not `floor_worst`), and capture is per-guard single-clock with a **staggered catch-gate query with carry-forward accrual** across simultaneous `HideSpotFront` holds (cycle `K`, `t_spotfront_verify 1.5 = 3 ticks` may be < K, accrual correct) — so two guards on different floors can legitimately split one-catch/one-confirm-empty, and an asymmetric approach can occlude the backstop Linecast for one guard. That split is FSM-owned (E4).
 
-- **AC7 — Noise-not-silenced (owned) + fruitless delegation.** (i) A player's movement state inside an `Occupied` spot emits the same hearing signature as outside (walk/run → noise-heard-eligible; crouch-still → none) — only vision disabled (Core Rule 6). Expected escape is crouch-walk silent; walk/run inside is audible and self-defeating (see AC10), but hunches never break the spot. (ii) A visit without `witnessed_entry_authority` resolves fruitless and the spot stays `Occupied` — FSM suite (E7/E8).
+- **AC7 — Noise-not-silenced (owned) + hunch separation.** (i) A player's movement state inside
+  an `Occupied` spot emits the same hearing signature as outside (walk/run → noise-heard-
+  eligible; crouch-still → none) — only vision is disabled (Core Rule 6). Expected escape is
+  crouch-walk silent; walk/run inside is audible and self-defeating (see AC10). (ii) A
+  noise/alert visit without `witnessed_entry_authority` never enters `HideSpotFront`, never
+  starts a catch clock, and resolves through ordinary fruitless Investigate behavior while
+  the spot stays `Occupied` — FSM suite (E7/E8).
 
 - **AC8 — Same-tick exit, automated integration (owned ordering + FSM delegation — JOINT-CONTINGENT).**
   Runs on the shared **H.0 virtual-tick fixture** (seeded RNG, `T_sample`-derived tick schema, ceiling-derived termination bound, no wall-clock `[Timeout]`): a tick where the capture single-clock is true **AND** player-exit is queued — the `Empty` fact publishes in phase 2 before the capture check in phase 4, the hold aborts, no `Capture` posts. Both timing boundary cases escape (`T==T_dwell` and `T==T_dwell+1`, `max(t_spotfront_verify,t_catch)/T_sample ×1.2` ceiling). HideSpot owns the Empty-publish-before-capture-check *order* (reads the trace/decision tap: Empty index < Capture index); the FSM owns the *capture-abort* outcome (reuses the AC-FSM suite assertion). If the H.0 fixture is not upstream or FSM rev 4.2 not landed, AC8 re-grades to **DELEGATED/BLOCKED** and its determinism claim is struck (see Testability prerequisites).
 
-- **AC9 — Overlap determinism (owned).** Active datum = spot with minimum Euclidean XZ `interior_position` to the capsule origin; ties within `1e-4` XZ break to the lower authored `spot_id`; stable (non-flap) while the capsule does not materially move (`displacement ≤0.01 m` retains prior active datum; `>0.01 m` may switch; hysteresis `0.05 m` prevents flap while stationary). Both overlapping spots flip `Occupied`/`Empty` and re-publish facts on re-entry (E3/E9).
+- **AC9 — Overlap rejection (owned, initial implementation).** The editor/CI sweep rejects any pair of HideSpot trigger volumes whose authored bounds overlap, and reports both stable `hide_spot_id` values plus rejection code `REJECT_OVERLAPPING_HIDESPOTS`. No runtime nearest-datum selection, dual-occupancy behavior, or overlap hysteresis is part of the shipped contract. A future overlap policy requires a separate design revision and review.
 
 - **AC13 — Re-entry re-publish (owned) + stale-episode closure (delegated — JOINT-CONTINGENT).** (i) Owned: exiting then re-entering during a hold re-posts occupied facts (E3); same-tick `Empty→Occupied` defers fresh allocation to next tick (D3). (ii) Delegated (FSM-suite, **contingent on the Blk-1 exit-abort + deferral, marked DELEGATED/BLOCKED until FSM rev 4.2**): the stale-episode closure — the exit-abort closes episode e1 and resets the timer so a fresh unwitnessed re-entry inherits no witnessed authority. HideSpot does NOT claim zone events alone re-seed the FSM; the closure is the FSM's exit-abort; an unwitnessed re-entry that re-seeds authority without abort is a FSM failure, not a HideSpot failure.
 
-- **AC14 — Active-datum non-flap (owned).** Two spots within sampling noise: the active datum is stable over **N=10 consecutive ticks (≈5 s at `T_sample 0.5`)** while the capsule is stationary (`displacement ≤0.01 m`, hysteresis `0.05 m`) — no alternation. Material move `>0.01 m` may switch datum per AC9.
+- **AC14 — Active-datum non-flap (owned).** Not applicable to the initial implementation because
+  overlapping volumes are rejected by AC9. If an overlap is encountered before certification,
+  the editor sweep fails closed rather than selecting an active datum.
+
+- **AC15 — Lifecycle reconciliation (owned, blocking).** On capture, death, respawn, scene reload,
+  full-room restart, pool/unpool, or `attempt_epoch` transition, every HideSpot clears any stale
+  occupancy transition and transient player association before the next playable tick. A spot is
+  `Occupied` after reset only if a fresh capsule-containment query in the new session/epoch is true;
+  old-epoch occupancy, hide-dive, or witnessed-authority facts are rejected and cannot suppress
+  vision or produce capture. The harness records the reset boundary and verifies no stale fact is
+  consumed after it.
+
+- **AC16 — Commitment onset and tier readability (joint with FSM/telegraph layer).** For a witnessed
+  entry, the onset trace shows spot-directed orientation, retarget, and the private bark within
+  `0.2 s` of the Perception hide-dive fact; the approach then ends in the committed kneel. An
+  ordinary noise/alert hunch produces neither the witnessed bark nor the kneel and cannot start
+  the catch clock. The test uses event timestamps, goal mode, authority property, and pose ID;
+  subjective legibility is covered by the visual/feel playtest evidence tier.
+
+- **AC17 — Accessibility and presentation fallback (joint, blocking for readability).** The same
+  witnessed-entry scenario is replayed with audio muted, captions disabled, reduced-motion mode,
+  a camera facing away, and color filters. Each run still exposes a camera-independent,
+  non-color pose/motion distinction and the onset/spot direction; captions, when enabled, name
+  the private bark. A sound-only, color-only, or camera-dependent result fails. The test records
+  platform/profile, accessibility settings, cue timestamps, pose ID, and pass/fail evidence.
 
 ### Testability prerequisites (instrumentation required before ACs are falsifiable)
 - The AC(d) sweep **materializes `floor_worst`** per spot (inducing guard + value, `floor_worst` = highest guard floor in population) and **per-pin reject reasons** — which leg (reachability / D1-path / D1-backstop / D2 / AC10 / datum / population) and *which* population member drove the rejection, so re-authoring is targeted; each failure carries its distinct substring (`REJECT_EMPTY_POPULATION`, `REJECT_PAYLOAD_DATUM_MISMATCH`, `REJECT_D1_BACKSTOP_DELTA_Y`, `REJECT_D2_AUTH_MARGIN_STRICT`, `REJECT_BOTH_LEGS`).
@@ -513,12 +611,12 @@ unit/integration suites against the shared fixture — never re-tested here.
 - **OQ-H1 — Level AC(d) venue + the standalone harness (RESOLVED 2026-08-26 spec'd → REVISED 2026-08-27 to full 7-pin spec).**
   The authored pins (D1/D2/guard-reachability) and AC4/AC5/AC10 are enforced twice: now by the **hide-spot editor sweep harness**, and at Level (#8) AC(d) once that GDD lands. The harness is a first-class deliverable, not a placeholder:
   - **What it loads:** the current scene; enumerates all authored `HideSpot` volumes and the temporary guard population (AC4's pin: guards whose **route's closest point to `spot_front_anchor` ≤ 5.5**, where closest point = `min Euclid to waypoint polyline`, not NavMesh distance).
-  - **What it asserts (per spot):** D1 at least-one-leg from **`guard_hold = spot_front_anchor + 0.40`** (B5 hold-match, not anchor alone; combined 0.8 m slack accounted): `path(guard_hold→proxy(interior_position))` ≤ 5.5 **OR** backstop (`EuclidXZ(guard_hold→interior)` ≤ 5.5 ∧ `|ΔY|` ≤ 1.0 *inclusive* ∧ `Linecast_clear(eye 1.6→interior+0.25, World/solid, Ignore triggers)`), where `proxy` = `NavMesh.SamplePosition(interior, 0.4 inclusive)` with `hit==false ⇒ path leg FAIL` and `agentType`/`areaMask` pinned; D2 `offset(interior, floor_worst) < 0.8` *strict* (`offset = |ΔY|` absolute) against `floor_worst` = highest guard floor in the population (with inducing guard materialized); datum identity `dist(interior, spot_position) <1e-4` (`REJECT_PAYLOAD_DATUM_MISMATCH`); and AC10's **four checks** (Sample success within 0.4, path front→escape exists, escape outside G's LOS cone at escape time, `pathLen/walkSpeed ≤ transit+dwell` with cone-exit within window, crouch-walk silent). Sanctuary-only spots must pass exhaustive LOS proof that no certified guard can see the entrance (empty population alone is `REJECT_EMPTY_POPULATION`, not sanctuary proof).
+  - **What it asserts (per spot):** D1 at least-one-leg from **`guard_hold = spot_front_anchor + 0.40`** (B5 hold-match, not anchor alone; combined 0.8 m slack accounted): `path(guard_hold→proxy(interior_position))` ≤ 5.5 **OR** backstop (`EuclidXZ(guard_hold→interior)` ≤ 5.5 ∧ `|ΔY|` ≤ 1.0 *inclusive* ∧ `Linecast_clear(eye 1.6→interior+0.25, World, Ignore triggers)`), where `proxy` = `NavMesh.SamplePosition(interior, 0.4 inclusive)` with `hit==false ⇒ path leg FAIL` and `agentType`/`areaMask` pinned; D2 `offset(interior, floor_worst) < 0.8` *strict* (`offset = |ΔY|` absolute) against `floor_worst` = highest guard floor in the population (with inducing guard materialized); datum identity `dist(interior, spot_position) <1e-4` (`REJECT_PAYLOAD_DATUM_MISMATCH`); and AC10's **four checks** (Sample success within 0.4, path front→escape exists, escape outside G's LOS cone at escape time, `pathLen/walkSpeed ≤ transit+dwell` with cone-exit within window, crouch-walk silent). Sanctuary-only spots must pass exhaustive LOS proof that no certified guard can see the entrance (empty population alone is `REJECT_EMPTY_POPULATION`, not sanctuary proof).
   - **Pass/fail:** a per-spot table — each leg's numeric value, proxy hit, Linecast pass/fail, `floor_worst` and inducing guard, D2 verdict, datum verdict, AC10's four sub-checks with inducing guard and `transit+dwell` vs `pathLen`. Any spot failing a required pin fails the sweep, which the CI gate consumes as a **hard failure (non-zero exit, `AC5` refusal path)** and persists artifact `production/qa/evidence/hide-spot-sweep-[date].md`. Each failure names the exact pin and population member via distinct substring (`REJECT_EMPTY_POPULATION`, `REJECT_PAYLOAD_DATUM_MISMATCH`, `REJECT_D1_BACKSTOP_DELTA_Y`, `REJECT_D2_AUTH_MARGIN_STRICT`, `REJECT_BOTH_LEGS`).
   - **Note on reachability pin:** guard-reachability is measured `guard → spot_front_anchor` (on-navmesh by construction, the FSM's M4 hold datum) — NOT `guard → proxy(interior_position)`, which is a runtime catch-callback bound and would inherit the 0.4 m interior-sample fragility as an authoring pin; `guard_hold` standoff is the only correct certification origin for D1.
-- **OQ-H2 — Overlap policy.** E9/AC9 pin a deterministic selection rule, but whether
-  overlapping spots are merely tolerated or should be authored-out (warning vs. rejection
-  at AC(d)) is open — leaning "reject at AC(d)" for hygiene.
+- **OQ-H2 — Overlap policy (RESOLVED 2026-09-01).** Overlapping spots are rejected at
+  AC(d) for the initial implementation. E9/AC9 intentionally contain no runtime selection
+  rule; any future overlap behavior requires a separate design revision and review.
 - **OQ-H3 — Authored-pin population (temporarily pinned in AC4).** "Certified-route guard
   population" is pinned for now as "guards whose route's closest point to
   `spot_front_anchor` ≤ `catch_range` (5.5)" so AC4 is testable. Level #8 must confirm or
@@ -537,6 +635,15 @@ unit/integration suites against the shared fixture — never re-tested here.
   spot_front_anchor), `interior_position` (entity), and updated `spot_front_anchor`
   referenced_by — to register in Phase 5.
 
-### Cross-system note (FSM rev 4.1 gap — Blk-1 + B2/B3, recorded 2026-08-26 → expanded 2026-08-27)
+### Cross-system note (FSM C1.4a synchronization — implementation evidence pending, updated 2026-09-01)
 
-This GDD's D3/AC3/AC6/AC8/AC13/E3/E10 depend on an **occupancy-gated, exit-aborting, 4-phase-ordered capture** that the Approved FSM rev 4.1 does **not** currently implement: the FSM's single-clock capture (C1.3/C1.4) has no `spot.state == Occupied` conjunct, no player-exit/Empty-event consumption, no **4-phase virtual-tick ordering** (`Empty` before `gate ∧ timer≥t_catch ∧ dwell` on same tick), no **same-tick exit+re-entry deferral** (fresh allocation deferred next tick), and no mid-dwell-exit-no-capture AC (and no stagger carry-forward accrual pin for simultaneous `HideSpotFront` holds). **This is a blocking dependency for *implementation*, recorded here and in Section F — a player who exits mid-dwell (or exits+re-enters same tick) is falsely captured until the FSM is amended — but it is correctly governed as JOINT-CONTINGENT for *GDD approval* (Hide owns the synchronous flush/order + datum + witnessable harness, FSM owns the abort outcome; AC3/AC8/AC13 re-grade to DELEGATED/BLOCKED until the amendment lands).** The required change (bounded FSM amendment: occupancy conjunct + Empty consumption + 4-phase ordering + re-entry deferral + mid-dwell-exit AC + stagger accrual) is a **standing obligation** tracked in `systems-index.md` row 1; it is NOT silently assumed to exist. See review log. This GDD may be **APPROVED-CONTINGENT** after its own 7 pins land; implementation remains BLOCKED until FSM rev 4.2.
+This GDD's D3/AC3/AC6/AC8/AC13/E3/E10 depend on an **occupancy-gated, exit-aborting,
+4-phase-ordered capture**. The approved FSM rev 4.1 already contains C1.4a, including the
+`spot.state == Occupied` conjunct, authoritative player-exit/Empty consumption, strict
+`Empty`-before-`gate ∧ timer≥t_catch ∧ dwell` ordering, same-tick exit-plus-re-entry
+allocation deferral, and mid-dwell-exit-no-capture coverage. This HideSpot GDD does not
+require a new FSM design revision; the only remaining dependency is implementation and
+shared virtual-tick fixture evidence that the existing C1.4a contract is wired to these
+HideSpot transitions. HideSpot owns the synchronous occupancy flush, datum identity, and
+ordering evidence; FSM owns the abort and episode outcome. These are joint implementation
+gates, not assumed runtime behavior, and the system remains In Review.
