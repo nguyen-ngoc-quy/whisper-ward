@@ -26,11 +26,36 @@ formula_definitions:
     output_range: "[0, R_max]"
     variables: [R, tau_res]
 
+  - name: cadence_ratio
+    expression: "cadence_ratio = cadence_walk / cadence_run; cadence_walk = V_walk / stride_length_walk; cadence_run = V_run / stride_length_run"
+    source: design/gdd/player-noise.md  # F3 cadence monotonicity
+    output_range: "(0, 1] for an accepted config; unbounded above before validation"
+    variables: [cadence_ratio, cadence_walk, cadence_run, V_walk, V_run, stride_length_walk, stride_length_run]
+    note: "The accepted starter value is approximately 0.79: (3.6 / 1.9) / (6.25 / 2.6). The hard load gate is cadence_ratio <= 1, equivalent to cadence_walk <= cadence_run; the registry direction is explicitly Walk divided by Run."
+
+  - name: burst_root_product
+    expression: "t_minus * t_plus = -2 * DeltaY / g"
+    source: design/gdd/player-noise.md  # F4 root-product proof
+    output_range: "finite for valid finite inputs; negative when DeltaY > 0, zero when DeltaY = 0, positive when DeltaY < 0"
+    variables: [t_minus, t_plus, DeltaY, g]
+    note: "Diagnostic proof of the two root regimes; it never replaces the strictly-positive-root predicate or the minimum-strictly-positive selection rule."
+
   - name: giveup_timeout
     expression: "t_giveup = t_giveup_base * s_diff * (1 + k_thorough * R/R_max)"
     source: design/gdd/perception.md  # F8
     output_range: "[2.45, 16.0] s (full knob domain); starter band [4.0, 6.0] s (base 4.0 × s_diff 1.0 × (1 + k_thorough·R/R_max), R ∈ [0, R_max])"
     variables: [t_giveup_base, s_diff, k_thorough, R, R_max]
+
+  - name: reanchor_giveup_timeout
+    expression: "t_reanchor = t_giveup_base * s_diff * (1 + k_thorough * (R_reanchor / R_max)) + t_noise_reanchor_extend"
+    source: design/gdd/player-noise.md  # Pass A AI behavior contract (2026-08-29); rewritten to the difficulty-scalar form rev 2026-08-31
+    output_range: "[6.0, 8.0] s for starter s_diff = 1.0; [4.8, 11.6] s over s_diff ∈ [0.7, 1.6] using registered residual and extension ranges"
+    variables: [t_reanchor, t_giveup_base, s_diff, k_thorough, R_reanchor, R_max, t_noise_reanchor_extend]
+    note: "Rev 2026-08-31 (clean full re-review): the prior S_DIFF speed-ratio formulation and its max() leg are STRUCK — the max() floor was dead at every reachable configuration (the normal leg already exceeded it whenever s_diff × R ≥ 1, impossible since R ≤ R_max = 1.0), the r_actual = 0 edge produced a discontinuous cliff (6.0 s fallback vs ≈2.04 s at 5 cm/s), and the approach-speed ratio is unmeasurable without sampling-instant ambiguity. The re-anchor budget is now exactly the generic giveup_timeout D1 form computed at R_reanchor PLUS the fixed extension t_noise_reanchor_extend — the reanchor_speed_ratio entry is deleted (struck). s_diff is the registered difficulty scalar (safe_range [0.7, 1.6]), the same scalar the generic giveup_timeout formula uses. R_reanchor is the Perception relay residual_at_hearing captured for the qualifying MVP re-anchor; the selected clock starts only after target/path-end reach. Documented sharp edge (intentional, adjudicated 2026-08-31): a corroboration whose residual snapshot is smaller than the original commit's produces a numerically smaller budget than the original arming — residual-scaled thoroughness follows the latest evidence; the clock restart at target arrival plus the fixed extension keep corroborated searches effectively longer in practice. AC15b-MVP binds this formula, not a monotonic-budget property."
+
+  - name: reanchor_speed_ratio
+    status: STRUCK 2026-08-31
+    note: "DELETED by the 2026-08-31 clean full re-review: the S_DIFF speed-ratio was unmeasurable without sampling-instant ambiguity, produced a discontinuous r_actual = 0 cliff, and its max() floor leg was dead at every reachable configuration. The MVP re-anchor budget is reanchor_giveup_timeout (difficulty-scalar s_diff form + fixed extension). Any document or implementation still referencing S_DIFF / reanchor_speed_ratio is stale and fails consistency check."
 
   - name: catch_range_invariant
     expression: "catch_range > V_run*T_sample_max + hyst + r_guard + r_player + stopping_distance"
@@ -160,7 +185,7 @@ constants:
     value: 1.0
     safe_range: "[0.7, 1.6]"
     source: design/gdd/perception.md  # F8
-    consumed_by: [Perception GDD, Guard AI FSM GDD]  # FSM D1 t_giveup(R) consumes s_diff (rev 3.6 lock-step)
+    consumed_by: [Perception GDD, Guard AI FSM GDD, Player Noise GDD]  # FSM D1 t_giveup(R) consumes s_diff (rev 3.6 lock-step); Player Noise reanchor_giveup_timeout consumes the same scalar (rev 2026-08-31)
 
   - name: T_sample
     value: 0.5  # s (2-5 Hz tick; starter 2 Hz worst-case)
@@ -172,7 +197,7 @@ constants:
   - name: T_hearing
     value: 0.2  # s — worst-case hearing-reaction bound, 5 Hz sub-eval cadence (rev 2026-08-27, B8)
     safe_range: "[0.1, 0.3] s"
-    note: "Hearing reaction is a 5 Hz staircase, not uniform: t_audible = t_commit + n·T_hearing for n ∈ {0, 1} at the starter 5 Hz quantum, bounded by T_hearing. Perception runs the hearing sub-evaluation additively to the 2-5 Hz vision tick; exact timestamp equality at commit is valid when the event lands on a due sub-eval."
+    note: "Hearing reaction is a 5 Hz staircase on the shared session virtual clock: t_audible = H(ceil_to_next_boundary(t_commit, T_hearing)), bounded by T_hearing. The boundary phase is initialized once per session/scene and is not reset by pooling, OnEnable, or OnDisable; pause excludes elapsed time. Exact timestamp equality at commit is valid when the event lands on a due sub-eval."
     source: design/gdd/player-noise.md  # CR9/F2 (re-review rev 2026-08-27); perception.md F12/tick-authority amendment
     owned_by: "Perception GDD (Player Noise co-sign)"
     consumed_by: [Perception GDD, Player Noise GDD, Guard AI FSM GDD]
@@ -289,7 +314,7 @@ constants:
 
   - name: R_vis
     value: 12.0  # m
-    safe_range: "[10, 15] m"
+    safe_range: "[10.5, 15] m"
     note: "conversion anchor for noise radii (m_per_px = 0.0511)"
     source: design/gdd/perception.md  # F13
     consumed_by: [Perception GDD, Player Noise GDD, Level GDD]
@@ -310,7 +335,7 @@ constants:
   - name: hearing_y_hard_cutoff
     value: 4.0  # m — hard cutoff of the soft Y-delta hearing falloff (rev 2026-08-28): full radius at ΔY = 0, linearly attenuated to zero at |ΔY| = 4.0 m; beyond it remains silent. DISTINCT from delta_y_tolerance 1.0 (vision/catch reachability gate)
     safe_range: "[3, 5] m"
-    note: "Soft vertical leg: R_eff = R_noise(kind) × max(0, 1 − |ΔY| / hearing_y_hard_cutoff); hearing uses planar XZ d_noise ≤ R_eff plus the binary E20 Linecast. The name is a hard cutoff for the attenuation domain, not a hard gate at the boundary."
+    note: "Soft vertical leg: R_eff = R_noise(kind) × max(0, 1 − |ΔY| / hearing_y_hard_cutoff); hearing uses planar XZ d_noise ≤ R_eff plus the binary E20 Linecast. The name is a hard cutoff for the attenuation domain, not a hard gate at the boundary. Rev 2026-08-31 (clean full re-review, user-selected): the ΔY datum is the GUARD'S FEET — ΔY = |noise_origin_y − guard_feet_y| (noise_origin_y = feet_y + f12_noise_origin_offset for movement, landing_contact_y for Burst); the prior eye-anchored datum is STRUCK (it silently shrank flat-ground radii ~40%). Effective starter radii at the feet-anchored datum: R_walk_eff ≈ 3.75 m (ΔY 0.25), R_run_eff ≈ 5.63 m (ΔY 0.25), R_burst_eff ≈ 10.37 m (ΔY ≈ 0.05); cross-storey: 3.0 m full storey → factor ≈ 0.26–0.31, 1.5 m mezzanine → ≈ 0.62–0.69. The nominal 4.0/6.0/10.5 registered radii and the LOCKED ordering/ratio are unchanged."
     source: design/gdd/player-noise.md  # CR5/E16 (re-review rev 2026-08-27); perception.md F12 amendment
     owned_by: "Perception GDD (Player Noise co-sign)"
     consumed_by: [Perception GDD, Player Noise GDD]
@@ -575,6 +600,15 @@ constants:
     owned_by: "Player Controller GDD (Player Noise co-sign)"
     consumed_by: [Player Controller GDD, Player Noise GDD]
 
+  - name: cadence_monotonicity_constraint
+    value: "cadence_ratio = cadence_walk / cadence_run = (V_walk / stride_length_walk) / (V_run / stride_length_run)"
+    safe_range: "ratio-logged on every load; accepted range (0, 1]; rejected at load if cadence_ratio > 1"
+    constraint: "F3(3) HARD cadence-monotonicity leg. The Walk pips-per-second `cadence_walk = V_walk / stride_length_walk` MUST be ≤ the Run pips-per-second `cadence_run = V_run / stride_length_run`; the inverse is rejected at load because a quieter state emitting pips more frequently than a louder state breaks Pillar 2 readability. The ratio is logged as `cadence_ratio = cadence_walk / cadence_run`; starter config gives (3.6/1.9)/(6.25/2.6) ≈ 0.79."
+    note: "F3(3) cadence monotonicity: the validator asserts `cadence_ratio ≤ 1` and logs cadence_walk, cadence_run, cadence_ratio, comparison result, and rejection code for either outcome. The prior ADVISORY downgrade is struck: this is a load-rejection rule, not a balance warning."
+    source: design/gdd/player-noise.md  # F3(3) re-derivation 2026-08-30
+    owned_by: "Player Noise GDD (Player Controller co-sign)"
+    consumed_by: [Player Noise GDD, Player Controller GDD]
+
   - name: rustle_threshold
     value: 0.70  # ratio of the current stride — fires the controller's rustle_event pre-pip tell (rev 2026-08-27, B5)
     safe_range: "[0.60, 0.80]"
@@ -590,7 +624,7 @@ noise_radii:
     source_px: 78  # prototype-validated; ratio walk:Burst = 1:2.63 LOCKED
     source: design/gdd/perception.md  # F12/F13
     owned_by: "Player Noise GDD (co-owner; prototype-sourced via Perception F12/F13)"
-    constraint: "R_walk < R_run < R_burst and R_burst <= R_vis (12.0 m — radius never exceeds the vision range, AC-F13); radius-edge probes at exact boundary +/ - 0.1 m (E14)"
+    constraint: "R_walk < R_run < R_burst <= R_vis (12.0 m — inclusive vision-range cap, AC-F13); radius-edge probes at exact boundary +/- 0.1 m (E14)"
     consumed_by: [Perception GDD, Player Noise GDD]
 
   - name: R_run
@@ -607,6 +641,23 @@ noise_radii:
     source_px: 205  # prototype-validated; ratio walk:Burst = 1:2.63 LOCKED
     source: design/gdd/perception.md  # F12/F13
     consumed_by: [Perception GDD, Player Noise GDD]
+  - name: guard_eye_height
+    value: 1.6  # m — guard eye anchor height above floor (occlusion ray endpoint)
+    safe_range: "[1.4, 1.8] m"
+    note: "Perception F12 hearing OCCLUSION ray endpoint (no ear bone) — rev 2026-08-31 (clean full re-review, user-selected): the eye is the geometric ray endpoint ONLY; the R_eff falloff datum is the GUARD'S FEET (ΔY = |noise_origin_y − guard_feet_y|), never the eye. The prior eye-anchored falloff multiplied every flat-ground movement pip by 1 − 1.6/4.0 = 0.60, silently shrinking nominal 4.0/6.0/10.5 m radii to ≈2.65/3.98/6.43 m effective and breaking the LOCKED walk:Burst ratio. noise_origin_y is feet_y + f12_noise_origin_offset for movement and the published landing_contact_y for Burst. Registered so Level authors compute effective radius deterministically (see hearing_y_hard_cutoff note for the effective-radii table)."
+    source: design/gdd/player-noise.md  # Hearing Y-delta pin (re-review 2026-08-28)
+    owned_by: "Player Noise GDD (Perception co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, Level GDD]
+
+physics_query_contract:
+  - name: E20_layer_manifest
+    required_names: [World]
+    forbidden_names: [Player, Guard, trigger]
+    validation: "Resolve each required name via LayerMask.NameToLayer(name) ≥ 0 at init; fail load if any returns −1 (layer missing — so its bit is trivially 0 and cannot falsely fail the forbidden-layer check), a forbidden layer bit (Player/Guard/trigger) is set, or the assembled mask is 0 (no required solid layer bit present). QueryTriggerInteraction.Ignore is mandatory for hearing, vision, pickup reach, and Burst collision."
+    note: "Resolve each exact project layer name ONCE at init via `LayerMask.NameToLayer(name)` and assert `≥ 0` (fail load if any returns −1 — the layer is missing); assemble the mask, assert it != 0, and assert no forbidden-layer bit (`Player`, `Guard`, `trigger`) is set; cache the resulting mask and never rebuild it per physics query. `LayerMask.GetMask` is avoided: exact `NameToLayer` resolution lets initialization validate every required name, reject a missing layer explicitly, assemble one cached mask, and avoid per-query resolution (player-noise behavioral revision 2026-08-28: WebGL allocation reduction + explicit caller validation; E20 correctness tightened fresh-session re-review 2026-08-28)."
+    source: design/gdd/player-noise.md  # E20 contract-hardening revision 2026-08-28
+    owned_by: "Physics GDD / Player Noise co-sign"
+    consumed_by: [Player Noise GDD, Perception GDD, Level GDD]
 
 burst_throw:
   - name: BurstThrowConfig.v0
@@ -624,21 +675,35 @@ burst_throw:
   - name: throw_release_height
     value: 1.5  # m — Burst release height above feet, stance-independent (rev 2026-08-27, B1)
     safe_range: "[1.2, 1.8] m"
-    note: "Feeds the F4 raised-origin range; raising it shortens range at fixed v0. Arc apex ≈1.93 m at starters — Level keeps throw volumes clear of ceilings near apex (ceiling-clamp edge case, player-noise E19)."
+    note: "Feeds the F4 raised-origin range; increased release height increases horizontal range for a fixed landing height when the selected root remains valid. Arc apex ≈1.93 m above release at starters — Level keeps throw volumes clear of ceilings near apex (ceiling-clamp edge case, player-noise E19)."
     source: design/gdd/player-noise.md  # CR3/F4 (re-review rev 2026-08-27)
     owned_by: "Player Noise GDD"
     consumed_by: [Player Noise GDD, Level GDD]
   - name: projectile_radius
     value: 0.05  # m — Burst collision sphere radius (rev 2026-08-28, blocker 3)
     safe_range: "locked"
-    note: "The fixed-radius Burst cast resolves contact at sphere_center + hit_normal × (projectile_radius + epsilon); the same E20 World/solid mask and QueryTriggerInteraction.Ignore apply to every substep."
+    note: "The fixed-radius Burst cast resolves contact at sphere_center + hit_normal × (projectile_radius + epsilon); the same E20 World mask and QueryTriggerInteraction.Ignore apply to every substep."
     source: design/gdd/player-noise.md  # F4 / E20 (behavioral revision 2026-08-28)
     owned_by: "Player Noise GDD"
     consumed_by: [Player Noise GDD, Physics GDD, Level GDD]
+  - name: epsilon_contact
+    value: 0.001  # m — Burst contact push-out margin
+    safe_range: "locked"
+    note: "Canonical landing position is collider-surface hit.point plus hit normal × (projectile_radius + epsilon_contact); this value is only post-hit center push-out, not cast travel or tie resolution."
+    source: design/gdd/player-noise.md  # F4 / AC9 (specialist revision 2026-08-29)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Physics GDD, Level GDD]
+  - name: contact_ambiguity_tolerance
+    value: 0.001  # m — Level-only equal-distance collision tie tolerance
+    safe_range: "[0.0005, 0.005] m"
+    note: "Content certification fails with AMBIGUOUS_COLLISION when two authored solids resolve within this distance; it is independent of epsilon_contact and never changes runtime SphereCast or landing push-out."
+    source: design/gdd/player-noise.md  # F4 content-certification pin 2026-08-29
+    owned_by: "Physics GDD (Level co-sign)"
+    consumed_by: [Player Noise GDD, Physics GDD, Level GDD, sound_performance_audit.md]
   - name: dt_max
     value: 0.0083333333  # s — 1/120 s maximum Burst integration substep
     safe_range: "locked at 1/120 s"
-    note: "Burst simulation uses a dedicated fixed-step integrator with dt <= dt_max, independent of render-frame duration; Unity physics simulationMode is FixedUpdate for the certified path."
+    note: "Burst simulation uses integer ticks of exactly dt_max = 1/120 s; fractional accumulated time is retained and never simulated as a final remainder tick. Unity Physics.simulationMode and FixedUpdate are not Burst step authority; the Physics ADR supplies the injected PhysicsScene and one explicit transform sync after authored solids are finalized. The decimal registry value `0.0083333333` is the serialized representation of the canonical rational 1/120 s; runtime and preview use the fixed-tick definition `1.0f/120.0f`, and config loading asserts equivalence within serialization tolerance so no second dt_max is introduced (player-noise F4 pin, behavioral revision 2026-08-28)."
     source: design/gdd/player-noise.md  # F4 / E19 (behavioral revision 2026-08-28)
     owned_by: "Physics GDD (Player Noise co-sign)"
     consumed_by: [Player Noise GDD, Physics GDD, Level GDD]
@@ -651,6 +716,49 @@ burst_throw:
     consumed_by: [Player Noise GDD, Level GDD]
 
 guard_noise_response:
+  - name: noise_response_profile
+    value: MVP  # immutable session behavior profile; Target requires AlertPropagation readiness
+    safe_range: "enum: MVP | Target"
+    note: "Behavior contract, not a balance knob. MVP requires coordination_service=absent and maps second/third qualifying same-area noise to single-guard re-anchor; Target requires a successful AlertPropagation capability/readiness handshake before play and alone permits peer-recruit/locked-zone decisions. Contradictory profile/service combinations fail validation; no implicit fallback. Record in LevelFixture and replay headers."
+    source: design/gdd/player-noise.md  # Pass A AI behavior contract (2026-08-29)
+    owned_by: "Player Noise GDD + Guard AI FSM GDD"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, Level GDD]
+  - name: target_alert_propagation_capability
+    value: absent
+    safe_range: "enum: absent | present"
+    note: "Target profile requires a matching ready capability handshake before the first playable tick; MVP requires absent. Missing, contradictory, or non-ready Target capability fails closed and never falls back to MVP. Record capability id and contract version in fixture/replay headers."
+    source: design/gdd/guard-ai-fsm.md  # Pass A revision B (2026-08-29)
+    owned_by: "Alert Propagation / Guard AI FSM GDD"
+    consumed_by: [Perception GDD, Guard AI FSM GDD, Level GDD]
+  - name: target_alert_propagation_contract_version
+    value: null
+    safe_range: "required non-empty version when profile=Target; null when profile=MVP"
+    note: "The version is part of the immutable Target readiness envelope and is validated before first play."
+    source: design/gdd/guard-ai-fsm.md  # Pass A revision B (2026-08-29)
+    owned_by: "Alert Propagation / Guard AI FSM GDD"
+    consumed_by: [Guard AI FSM GDD, Level GDD]
+  - name: target_alert_propagation_readiness
+    value: not_required
+    safe_range: "enum: not_required | ready | not_ready"
+    note: "MVP uses not_required with absent capability; Target must use ready with a matching capability and handshake timestamp."
+    source: design/gdd/guard-ai-fsm.md  # Pass A revision B (2026-08-29)
+    owned_by: "Alert Propagation / Guard AI FSM GDD"
+    consumed_by: [Guard AI FSM GDD, Level GDD]
+  - name: noise_same_timestamp_source_order
+    value: [source_timestamp, source_event_class_rank, source_event_id]
+    safe_range: "locked deterministic tuple; movement rank=0, Burst rank=1"
+    note: "Accepted source events with equal timestamps allocate fact_id in this order; listener/thread arrival order is never authoritative."
+    source: design/gdd/player-noise.md  # Pass A revision B (2026-08-29)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, Level GDD]
+  - name: noise_corroboration_saturation_limit
+    value: 3
+    safe_range: "locked integer >= 1"
+    note: "Only the first three qualifying facts count. Later same-area facts are trace-only until episode resolution and do not re-anchor, extend timers, recruit peers, lock zones, or allocate identities."
+    source: design/gdd/guard-ai-fsm.md  # Pass A revision B (2026-08-29)
+    owned_by: "Guard AI FSM GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, Level GDD]
+
   - name: t_noise_recommit_cooldown
     value: 2.0  # s — post-resolution noise-recommit cooldown (rev 2026-08-27, B11)
     safe_range: "[1.0, 3.0] s"
@@ -662,31 +770,642 @@ guard_noise_response:
   - name: t_noise_corroborate_window
     value: 6.0  # s — same-area corroboration window for a guard's noise episode
     safe_range: "[4.0, 8.0] s"
-    note: "Second same-area noise within the window recruits a peer; third escalates to locked zone. This positive corroboration leg is orthogonal to the single-guard recommit cooldown and must not be debounced."
+    note: "Target tier: second same-area noise within the window may peer-recruit and third may escalate to locked zone. MVP: without a coordination service, the second/third same-area fact re-anchors the single guard and extends give-up instead. This positive corroboration leg is orthogonal to the single-guard recommit cooldown and must not be debounced."
     source: design/gdd/player-noise.md  # Core Rule 7 / CR7 (behavioral revision 2026-08-28)
     owned_by: "Guard AI FSM GDD (Player Noise co-sign)"
     consumed_by: [Guard AI FSM GDD, Player Noise GDD]
+  - name: t_noise_corroborate_radius
+    value: 1.5  # m — same-area window for noise corroboration (mirrors r_investigate_error)
+    safe_range: "[1.0, 2.5] m"
+    note: "Distinct semantic from the FSM's r_investigate_error (investigation-target error): this is the corroboration same-area window — a 2nd/3rd same-area Noise heard within t_noise_corroborate_window and within this radius of the prior noise origin is consumed as corroboration. In MVP it re-anchors the single guard; in Target it may escalate to peer-recruit / locked-zone. Registered separately so FSM retuning of investigation error cannot silently change corroboration (player-noise blocker 10 / re-review 2026-08-28). It is an ALIAS (not a copy) of r_investigate_error — same numeric value, independently registered so the corroboration same-area window and the investigation-target error retune on separate leashes."
+    source: design/gdd/player-noise.md  # Core Rule 7 (re-review 2026-08-28)
+    owned_by: "Guard AI FSM GDD (Player Noise co-sign)"
+    consumed_by: [Guard AI FSM GDD, Player Noise GDD]
+
+  - name: t_noise_reanchor_extend
+    value: 2.0  # s — MVP single-guard give-up timer extension on noise re-anchor (fresh-session re-review 2026-08-28, B1 fix)
+    safe_range: "[1.0, 4.0] s"
+    note: "In MVP (no coordination service) a second/third same-area Noise heard does NOT escalate but re-anchors the live single-guard Investigate to the new raw noise origin with a brief re-orient. The selected budget is t_reanchor = t_giveup_base × s_diff × (1 + k_thorough × (R_reanchor / R_max)) + this amount (rev 2026-08-31: the difficulty-scalar D1 form plus the extension — the prior S_DIFF/max() formulation is struck, see reanchor_giveup_timeout), where R_reanchor is relay residual_at_hearing; the clock starts after target/path-end reach. Peer-recruit / locked-zone escalation stays Target-tier only (gated on Alert Propagation). Registered so Level/FSM authors cannot silently drop the MVP re-anchor or residual scaling."
+    source: design/gdd/player-noise.md  # CR7/E18 (fresh-session re-review 2026-08-28)
+    owned_by: "Guard AI FSM GDD (Player Noise co-sign)"
+    consumed_by: [Guard AI FSM GDD, Player Noise GDD]
+
+player_noise_budget:
+  - name: noise_timing_contract
+    value: "t_publish = source_timestamp for Movement; t_publish = terminal_publication_time for Burst"
+    safe_range: "finite session virtual time; terminal_publication_time is not applicable to Movement"
+    note: "source_timestamp is the source input-edge/commit ordering field. Burst terminal_publication_time is the landing/timeout publication time and the hearing deadline anchor; Burst hearing never substitutes source_timestamp. Hearing deadline is t_publish + T_hearing, inclusive at the boundary."
+    source: design/gdd/player-noise.md  # F2/F2b timing contract (2026-09-01)
+    owned_by: "Player Noise GDD (Perception co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, Level GDD]
+  - name: noise_source_identity_namespaces
+    value: ["step:<step_id>", "flight:<flight_handle_id>"]
+    safe_range: "locked disjoint namespaces, monotonic within each namespace and (session_id, attempt_epoch)"
+    note: "Movement source identities use the `step:` namespace with controller-owned step_id; Burst source identities use the `flight:` namespace with emitter-owned flight_handle_id. The namespaces are disjoint, and no source identity is reused across session_id/attempt_epoch."
+    source: design/gdd/player-noise.md  # source identity allocation (2026-08-31)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, Level GDD]
+  - name: burst_flight_handle_id_allocation
+    value: accepted_throw_edge
+    safe_range: "monotonic ulong within (session_id, attempt_epoch); absent for rejected Throw"
+    note: "The Burst `flight_handle_id` is allocated exactly once when an accepted Throw begins, before flight simulation and before terminal publication. It is the Burst source_event_id and is retained through landing, timeout, or death cancellation; duplicate Throw/terminal/publication requests are idempotent no-ops."
+    source: design/gdd/player-noise.md  # Burst identity allocation (2026-08-31)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Level GDD, Perception GDD]
+  - name: fact_id_allocation
+    value: accepted_raw_fact_publication
+    safe_range: "monotonic ulong within session; one value per published raw fact"
+    note: "The emitter allocates `fact_id` only when an accepted raw NoisePublished fact is published, after source-event deduplication and deterministic source ordering. The id is shared across all hearing guards; retries never allocate another id, and Perception never allocates or re-derives it."
+    source: design/gdd/player-noise.md  # raw fact identity allocation (2026-08-31)
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, Level GDD]
+  - name: movement_mode
+    value: [Walk, Run]
+    safe_range: "enum: Walk | Run; required on every movement NoisePublished payload"
+    note: "Explicit movement source mode is carried from the latched `stride_target_state`; it is never inferred from generic kind=movement and is not applicable to Burst."
+    source: design/gdd/player-noise.md  # F1 movement publication mapping
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Player Controller GDD, Perception GDD, Level GDD]
+  - name: resolved_nominal_radius
+    value: "N(stride_target_state): Walk -> R_walk; Run -> R_run"
+    safe_range: "R_walk or R_run before Perception vertical falloff; required on movement payloads"
+    note: "The movement payload carries the resolved nominal radius selected from the latched stride target. `radius` equals this value before Perception applies F12 falloff; post-latch state cannot change it."
+    source: design/gdd/player-noise.md  # F1 movement publication mapping
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Player Controller GDD, Perception GDD]
+  - name: max_hearing_guards_per_boundary
+    value: 30
+    safe_range: "locked MVP work cap"
+    note: "At most 30 guards are selected from the stable active snapshot for each hearing boundary, ordered by the **`guard-perception-order`** = `(stable_guard_snapshot_position, guard_eid)` with a deterministic continuation cursor across boundaries. This is a selection cap, not a validation failure: unselected guard/fact pairs remain ordered deferred work and are either evaluated before the T_hearing deadline or receive an explicit deadline/overflow diagnostic."
+    source: design/gdd/player-noise.md  # contract-hardening revision 2026-08-29; queue admission order 2026-08-30
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: hearing_queue_admission_order
+    value: [hearing_order_guard_selection_key, hearing_order_fact_admission_key, hearing_order_pair_dispatch_key]
+    safe_range: "locked three-domain deterministic ordering contract"
+    note: "Umbrella label for three INDEPENDENT keys: guard selection, fact admission, and pair dispatch. Do not collapse them into one composite key in acceptance criteria. Listener/thread arrival order, subscription churn mid-boundary, queue insertion order, and per-listener registry mutation are NOT identity sources."
+
+  - name: hearing_order_guard_selection_key
+    value: [stable_guard_snapshot_position, guard_eid]
+    safe_range: "locked deterministic tuple"
+    note: "Component key 1 of 3 (rev 2026-08-30 split): the selected guard set is the stable_guard_snapshot taken at the boundary's perception-tick start (NOT the active subscription), ordered by stable_guard_snapshot_position with guard_eid as the stable tie-break. Distinct from the emitter's same-timestamp source-allocation order. Asserted independently by AC-FX-6."
+    source: design/gdd/player-noise.md  # queue admission order 2026-08-30; key split 2026-08-31
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+
+  - name: hearing_order_fact_admission_key
+    value: [source_timestamp, source_event_class_rank, source_event_id, fact_id]
+    safe_range: "locked deterministic tuple"
+    note: "Component key 2 of 3: facts admitted to the selected guard snapshot are processed in (source_timestamp, source_event_class_rank, source_event_id, fact_id) order. Distinct from guard selection and pair dispatch; listener/thread arrival and queue insertion order are not authoritative. Asserted independently by AC-FX-6."
+    source: design/gdd/player-noise.md  # queue admission order 2026-08-30; key split 2026-08-31
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+
+  - name: hearing_order_pair_dispatch_key
+    value: [source_timestamp, source_event_class_rank, source_event_id, fact_id, guard_eid]
+    safe_range: "locked deterministic tuple"
+    note: "Component key 3 of 3: guard/fact pairs are dispatched for evaluation in (source_timestamp, source_event_class_rank, source_event_id, fact_id, guard_eid) order. Mirrors the full source order and guard tie-break. Distinct from guard selection and fact admission. Asserted independently by AC-FX-6."
+    source: design/gdd/player-noise.md  # queue admission order 2026-08-30; key split 2026-08-31
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: max_hearing_facts_per_boundary
+    value: 8
+    safe_range: "[1, 32] facts/boundary; MVP locked at 8"
+    note: "Caps facts evaluated in one due boundary. Facts sort by (source_timestamp, source_event_class_rank, source_event_id, fact_id); later facts remain ordered deferred work and are not silently discarded."
+    source: design/gdd/player-noise.md  # deterministic hearing-work amendment 2026-08-29
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: max_hearing_pairs_per_boundary
+    value: 30
+    safe_range: "[1, 128] guard/fact pairs/boundary; MVP locked at 30"
+    note: "Caps actual guard/fact evaluations and therefore Linecasts in one boundary. Pair order is (source_timestamp, source_event_class_rank, source_event_id, fact_id, guard_eid); deferred pairs retain their identities and are drained before newly arrived work."
+    source: design/gdd/player-noise.md  # deterministic hearing-work amendment 2026-08-29
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: perception_hearing_work_capacity
+    value: 512
+    safe_range: "[64, 4096] deferred guard/fact work items"
+    note: "Bounded ordered queue for unselected guards, unevaluated facts, and unevaluated guard/fact pairs. Retry/backpressure precedes rejection; capacity exhaustion records a stable diagnostic and serialized identity rather than silently dropping work."
+    source: design/gdd/player-noise.md  # deterministic hearing-work amendment 2026-08-29
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: perception_hearing_retry_attempts
+    value: 3
+    safe_range: "[1, 8] attempts"
+    note: "Maximum deterministic retries when Perception's raw-fact or deferred-work queue is full before explicit rejection. Retry preserves the original fact and source identities."
+    source: design/gdd/player-noise.md  # bounded hearing transport amendment 2026-08-29
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: max_hearing_boundaries_per_frame
+    value: 1
+    safe_range: "[1, 4] boundaries/frame; MVP locked at 1"
+    note: "At most one due hearing boundary is drained in one render frame. Remaining due boundaries stay ordered in the bounded deferred-boundary queue and are diagnosed; this cap is distinct from the per-boundary 30-guard cap."
+    source: design/gdd/player-noise.md  # deterministic catch-up amendment 2026-08-29
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: event_bus_pending_envelope_capacity
+    value: 256
+    safe_range: "[64, 1024] immutable envelopes"
+    note: "Bounded Event Bus ingress capacity. A full queue retries deterministically before rejection; an unrecoverable rejection records queue-overflow-rejected with the envelope identity. No accepted sensing fact is silently dropped."
+    source: docs/architecture/adr-0001-event-messaging-bus.md  # bounded transport contract 2026-08-29
+    owned_by: "Event Bus ADR / Technical Setup"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, sound_performance_audit.md]
+  - name: perception_hearing_queue_capacity
+    value: 128
+    safe_range: "[32, 512] raw facts"
+    note: "Bounded Perception hearing queue after Event Bus phase delivery. Deterministic retry/backpressure precedes rejection; rejected facts receive a stable hearing-queue-overflow diagnostic and serialized accounting."
+    source: design/gdd/player-noise.md  # hearing transport contract 2026-08-29
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: max_deferred_hearing_boundaries
+    value: 4
+    safe_range: "[1, 16] boundaries"
+    note: "Maximum ordered due-boundary backlog retained by the Perception scheduler. Overflow is a deterministic diagnostic/rejection at the boundary, never silent loss; the virtual clock and raw fact identities remain unchanged."
+    source: design/gdd/player-noise.md  # deterministic catch-up amendment 2026-08-29
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: event_bus_retry_attempts
+    value: 3
+    safe_range: "[1, 8] attempts"
+    note: "Maximum deterministic retry attempts before a full bounded queue is reported as rejected. Retries occur before identity deduplication and reuse the original envelope identity."
+    source: docs/architecture/adr-0001-event-messaging-bus.md  # retry/backpressure contract 2026-08-29
+    owned_by: "Event Bus ADR / Technical Setup"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: bounded_queue_overflow_policy
+    value: reject-newest
+    safe_range: "enum: reject-newest"
+    note: "For Event Bus pending envelopes, Perception raw facts, deferred boundaries, and hearing work: retry/backpressure first, preserve older queued items, reject only the newest item after retry exhaustion, serialize its identity/epoch/timestamp/queue metrics, and fail certification closed. No silent drop, oldest eviction, or implicit stretching."
+    source: design/gdd/player-noise.md  # Pass A revision B (2026-08-29)
+    owned_by: "Event Bus ADR + Perception GDD (Player Noise co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, sound_performance_audit.md]
+  - name: burst_collision_timeout_order_policy
+    value: event-time-contact-before-or-at-timeout
+    safe_range: "enum: event-time-contact-before-or-at-timeout"
+    note: "Compare the earliest SphereCast contact event time with timeout_boundary_s=3.0; contact at or before equality wins, later contact loses to timeout, and the terminal record carries the comparison."
+    source: design/gdd/player-noise.md  # Pass A revision B (2026-08-29)
+    owned_by: "Player Noise GDD (Physics co-sign)"
+  - name: burst_source_timestamp_policy
+    value: two-timestamp-split
+    safe_range: "enum: two-timestamp-split (rev 2026-08-31; single input-edge-capture-time value is STRUCK)"
+    note: "Rev 2026-08-31 (clean full re-review): a Burst fact carries TWO virtual-time fields with distinct roles. (1) source_timestamp = the Throw input-edge capture time — the ALLOCATION AND ORDERING KEY ONLY (deterministic same-timestamp allocation order (source_timestamp, source_event_class_rank, source_event_id), dedup identity, replay comparison); it is NEVER the F2b deadline anchor — every MVP flight lasts ~0.25–1.5 s, so anchoring the T_hearing deadline at the input edge would reject every Burst fact at admission. (2) terminal_publication_time = the virtual gameplay time of the flight's terminal resolution (contact_event_time on collision, timeout boundary on timeout) — the DEADLINE ANCHOR: the T_hearing deadline for a Burst pair computes as terminal_publication_time + T_hearing. Movement facts keep source_timestamp as their deadline anchor (commit time IS publish time). The emitter's committed-order gate is MOVEMENT-SCOPED: a Burst fact is never rejected for source order — its flight legitimately spans multiple movement commits, and its ordering is guaranteed at allocation by the deterministic key; a movement pip committing mid-flight does not disturb the flight's reserved identity. Dedup namespaces are DISJOINT: movement keys in the step: namespace (step_id), Burst keys in the flight: namespace (flight_handle_id), each unique within (session_id, attempt_epoch); a unified cross-class keyset or a per-boundary handle reset without epoch scoping is a validator failure, and a cross-class duplicate rejection diagnostic must name its namespace. The thrower's origin position is captured at the input-edge instant."
+    source: design/gdd/player-noise.md  # Pass A revision B — Burst timestamp (2026-08-30); two-timestamp split rev 2026-08-31
+    owned_by: "Player Noise GDD"
+    consumed_by: [Player Noise GDD, Perception GDD, LevelFixture]
+  - name: thrower_velocity_composition_policy
+    value: origin-only-launch-vector-pure
+    safe_range: "enum: origin-only-launch-vector-pure"
+    note: "The Burst projectile's initial velocity vector is computed solely from BurstThrowConfig (v0 magnitude) and the captured camera azimuth (XZ direction). The thrower's own run/crouch velocity does NOT add to the projectile's initial velocity; it affects only the origin position sampled at the input-edge instant. Any 'thrower kinetic contribution' or 'drag' is a violation that fails closed at fixture validation. Runtime, preview, and LevelFixture all use the same composition."
+    source: design/gdd/player-noise.md  # Pass A revision B — Thrower velocity composition (2026-08-30)
+    owned_by: "Player Noise GDD (Physics co-sign)"
+    consumed_by: [Player Noise GDD, LevelFixture, Level GDD, sound_performance_audit.md]
+  - name: burst_backlog_advances_flight_elapsed
+    value: false
+    safe_range: "locked boolean false"
+    note: "Discarded backlog beyond max_backlog_ticks is diagnostic/replay data only; only completed fixed ticks advance flight_elapsed."
+    source: design/gdd/player-noise.md  # Pass A revision B (2026-08-29)
+    owned_by: "Player Noise GDD (Physics co-sign)"
+    consumed_by: [Player Noise GDD, Level GDD, sound_performance_audit.md]
+  - name: hearing_entry_reservation_order
+    value: [source_timestamp, source_event_class_rank, source_event_id, fact_id, guard_eid]
+    safe_range: "locked deterministic tuple"
+    note: "Same-boundary Perception reservation projection uses the full pair order; first no-live candidate reserves one entry id and later candidates reuse the projected live id."
+    source: design/gdd/perception.md  # Pass A revision B (2026-08-29)
+    owned_by: "Perception GDD (Player Noise co-sign)"
+    consumed_by: [Perception GDD, Guard AI FSM GDD, Level GDD]
+  - name: audio_stale_cancellation_policy
+    value: cancel-before-presentation
+    safe_range: "enum: cancel-before-presentation"
+    note: "Duplicate, rejected, stale, terminal-cancelled, or prior-epoch source facts never schedule a cue; queued cues cancel at the lifecycle barrier; missed virtual deadlines record a stable diagnostic and never play late."
+    source: design/gdd/player-noise.md  # Pass A revision B (2026-08-29)
+    owned_by: "Player Noise GDD (Audio co-sign)"
+    consumed_by: [Player Noise GDD, Audio & UI GDD, sound_performance_audit.md]
+  - name: hearing_burst_perception_budget_ms
+    value: 2.0
+    safe_range: "locked MVP p95/p99 target"
+    note: "The supported-MVP 1-guard/1-fact/one-flight hearing, Burst, and Perception workload measured after warm-up must remain at or below 2.0 ms. The stress_30_guard_8_fact profile is diagnostic-only (240 candidates, cap-bounded selection/deferred accounting) and is never a supported-performance pass. A WebGL 33 ms hitch replay must preserve the reference result."
+    source: design/gdd/player-noise.md  # contract-hardening revision 2026-08-28
+    owned_by: "Player Noise GDD (Perception co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+  - name: aggregate_webgl_frame_budget_ms
+    value: 12.0
+    safe_range: "locked subsystem-aggregate diagnostic record (NOT an acceptance gate — see note)"
+    note: "Rev 2026-08-31 (clean full re-review, user-selected rename): this is the NOISE-PATH SUBSYSTEM-AGGREGATE diagnostic record — aggregate hearing/Burst/perception SUBSYSTEM work (a slice of the WebGL total frame), measured at p95/p99 on the WebGL target and reported per subsystem. It is NOT a whole-frame gate: 12.0 ms is 72% of the 16.6 ms PC frame but only ~36% of the 33 ms WebGL floor gate, so a build passing only this leg can still miss 30 fps. The registered decomposition (each subsystem slice reported in the AC21 record; per-slice caps finalized at the OQ6 hardware run): hearing evaluation (incl. Linecasts, ≤2.0 ms supported envelope per hearing_burst_perception_budget_ms), Burst fixed-step sim + one bounded SyncTransforms, Perception queue/bus main-thread work, audio bridge main-thread cost. The ACCEPTANCE gate is webgl_whole_frame_budget_p95_ms below; this aggregate is its decomposition evidence."
+    source: design/gdd/player-noise.md  # contract-hardening revision 2026-08-28; renamed subsystem-diagnostic rev 2026-08-31
+    owned_by: "Technical Setup / Player Noise co-sign"
+    consumed_by: [Player Noise GDD, sound_performance_audit.md]
+  - name: webgl_whole_frame_budget_p95_ms
+    value: 33.0
+    safe_range: "locked at the WebGL 30 fps floor (1000/30)"
+    note: "Rev 2026-08-31 (clean full re-review, user-selected): the WHOLE-FRAME WebGL acceptance gate for AC21 — whole-frame p95 ≤ 33.0 ms at the 30 fps floor, measured on target WebGL hardware with Physics.autoSyncTransforms ownership plus Event Bus and audio main-thread cost inside the measurement boundary. This is the gate that decides the AC21 pass; aggregate_webgl_frame_budget_ms (12.0 ms) and hearing_burst_perception_budget_ms (2.0 ms) are its subsystem decomposition records for the supported_mvp profile. The prior AC21 wording that gated only the subsystem slices (letting a 30 fps/32 ms whole-frame build pass every leg) is STRUCK. Hitch frames are excluded from steady-state percentiles and bounded by the separate stall budget."
+    source: design/gdd/player-noise.md  # whole-frame gate (clean re-review 2026-08-31)
+    owned_by: "Technical Setup / Player Noise co-sign"
+    consumed_by: [Player Noise GDD, sound_performance_audit.md, PerformanceFixture]
+  - name: max_frame_delta_s
+    value: 0.0667  # s — virtual-clock per-call gameplay-time advance clamp (8 ticks at dt_max)
+    safe_range: "[0.033, 0.1] s"
+    note: "Rev 2026-08-31 (clean full re-review, unity-specialist): the virtual clock clamps each per-call gameplay-time advance to this value with a clock-delta-clamped diagnostic — an anomalous first-frame delta (e.g. 0.333 s after refocus) can never enqueue a large catch-up batch at once. Defense-in-depth only: a render stall freezes virtual time (no backlog accrues), and the production wiring advances at most one tick per call; the Burst max_backlog_ticks cap remains the harness-only synthetic path."
+    source: design/gdd/player-noise.md  # engine-contract drift fixes (clean re-review 2026-08-31)
+    owned_by: "Player Noise GDD (Physics co-sign)"
+    consumed_by: [Player Noise GDD, Physics GDD]
+  - name: max_backlog_ticks
+    value: 8
+    safe_range: "locked MVP catch-up cap"
+    note: "Caps Burst fixed-step catch-up: accumulated gameplay time beyond 8·dt_max is dropped (not simulated), bounding worst-case catch-up and preventing a spiral-of-death on slow WebGL devices. Rev 2026-08-31 (clean full re-review): the cap is a HARNESS-ONLY synthetic path in production terms — the production wiring advances the accumulator by at most one tick of gameplay time per call, so a multi-tick backlog never arises from normal play; AC21 exercises the cap by injecting synthetic multi-tick deltas, the only legitimate way to reach it. A render stall (33 ms hitch) is an intentional out-of-budget frame; hitch frames are excluded from the steady-state gates (AC21 counts only non-hitch frames). The stall is bounded by the separate stall budget (stall_magnitude_budget_ms + stall_rate_cap_per_s) — a hitch is permitted only within that budget, not as an open-ended exclusion (AC21 perf gate, fresh-session re-review 2026-08-28). The virtual-clock per-call advance is additionally clamped by max_frame_delta_s."
+    source: design/gdd/player-noise.md  # performance gate (re-review 2026-08-28)
+    owned_by: "Player Noise GDD (Physics co-sign)"
+    consumed_by: [Player Noise GDD, Physics GDD, sound_performance_audit.md]
+  - name: audio_cue_onset_tolerance_ms
+    value: 20  # ms — registered DSP scheduling tolerance for footstep/rustle/Burst onset
+    safe_range: "[10, 40] ms"
+    note: "Gameplay-commit identity to DSP onset tolerance, fixed by the Noise GDD (audio blocker 9 / re-review 2026-08-28); AudioFeedbackFixture asserts onset meets this value. Pooling/routing remain OQ3/ADR deferrals. Rev 2026-08-31 (audio-director, clean full re-review): the tolerance must be ≥ the platform's audio mix quantum — a 20 ms default is below some middleware mix-block sizes (e.g. a 1024-sample block at 48 kHz is ≈21.3 ms), so the OQ3 ADR sets the per-platform value from the chosen middleware's mix quantum; 20 ms remains the default floor."
+    source: design/gdd/player-noise.md  # Visual/Audio (re-review 2026-08-28)
+    owned_by: "Player Noise GDD (Audio co-sign)"
+    consumed_by: [Player Noise GDD, Audio & UI GDD]
+
+  - name: audio_onset_report_states
+    value: [confirmed, estimated, pending, unsupported]
+    safe_range: "locked enum"
+    note: "AC19 onset evidence states (rev 2026-08-31 — replaces the unexecutable generic 'virtual_dsp_onset' Wwise DSP-onset oracle; a generic Wwise SFX scheduled-start callback does not exist and is never assumed). PASS/FAIL mapping fixed 2026-08-31 (clean full re-review, user-selected): ONLY confirmed is passing evidence. confirmed = the audio integration reports an actual DSP sample start; the |reported − requested| gap is checked against audio_cue_onset_tolerance_ms on the injected virtual clock — PASSING. estimated = the integration reports an estimated sample start (derived from the integration's own reported markers/duration — NEVER an unregistered hardcoded pipeline-latency constant) — NON-PASSING; a later confirmed arrival updates the record for TRACE ONLY and can never flip an estimated record to passing (the prior retroactive-fail clause is struck: evidence that can flip after the fact is not deterministic). pending = the onset report has not arrived — NON-PASSING; the pending record is diagnostic metadata (pending_onset_record) only and never authorizes late playback after a missed virtual gameplay deadline. unsupported = no audio integration exists in the environment; the fixture records DSP_onset_unsupported — NON-PASSING. Pause semantics: audio cues are never buffered across pause; a cue whose virtual deadline passes while paused is cancelled before presentation (audio_stale_cancellation_policy)."
+    source: design/gdd/player-noise.md  # AC19 estimated-onset contract (fresh re-review 2026-08-30, user-selected)
+    owned_by: "Player Noise GDD (Audio co-sign)"
+    consumed_by: [Player Noise GDD, Audio & UI GDD]
+  - name: stall_magnitude_budget_ms
+    value: 33  # ms — per-hitch magnitude ceiling for an intentional out-of-budget render stall (WebGL hitch)
+    safe_range: "locked at the WebGL 33 ms hitch"
+    note: "A render stall is an intentional out-of-budget frame; a single stall is permitted only if its magnitude ≤ 33 ms. This is the magnitude half of the separate stall budget (AC21 perf gate, fresh-session re-review 2026-08-28) — paired with stall_rate_cap_per_s so hitches are bounded in both size and frequency, never an open-ended steady-state exclusion."
+    source: design/gdd/player-noise.md  # performance gate (re-review 2026-08-28)
+    owned_by: "Player Noise GDD (Physics co-sign)"
+    consumed_by: [Player Noise GDD, Physics GDD, sound_performance_audit.md]
+  - name: stall_rate_cap_per_s
+    value: 1  # hits/sec — maximum permitted stall rate (starter; tune at OQ6 hardware run)
+    safe_range: "[0, 4] hits/sec"
+    note: "The rate half of the separate stall budget (AC21 perf gate): a hitch is permitted only if its rate ≤ this cap. Rate is measured over a sliding 1 s window; the (N+1)th hitch landing within any 1 s window beyond the cap is a perf failure, not a steady-state exclusion. Starter 1/s; the OQ6 WebGL hardware run sets the final value."
+    source: design/gdd/player-noise.md  # performance gate (re-review 2026-08-28)
+    owned_by: "Player Noise GDD (Physics co-sign)"
+    consumed_by: [Player Noise GDD, Physics GDD, sound_performance_audit.md]
+
+  - name: performance_fixture_ownership
+    value: "PerformanceFixture (fixture 11 of the 11-fixture mandatory set, schema WW-PERF-1.0)"
+    safe_range: "locked ownership assignment"
+    note: "AC21 owner assignment (rev 2026-08-31, user-selected): the named PerformanceFixture — added to the mandatory fixture set as its 11th member — owns the AC21 performance harness. It defines two profiles: supported_mvp (1 guard / 1 fact / 1 Burst flight, ≤ 2.0 ms p95/p99 per hearing_burst_perception_budget_ms — the SUPPORT envelope) and diagnostic stress_30_guard_8_fact (240 candidate pairs, 30 evaluated, 210 deferred — diagnostic coverage, NEVER a support promise, never a gating pass). Rev 2026-08-31 (clean full re-review, user-selected rebinding): the ACCEPTANCE gate is the whole-frame webgl_whole_frame_budget_p95_ms (33.0 ms p95 at the 30 fps floor) measured on target WebGL hardware; the 2.0 ms slice and the aggregate_webgl_frame_budget_ms (12.0 ms) are its decomposition records for supported_mvp, reported per subsystem — the prior AC21 wording that bound 2.0 ms to the 30-guard case and gated only subsystem slices is STRUCK. Measurement boundary MUST include Physics.autoSyncTransforms state, the one bounded Physics.SyncTransforms call per Burst batch, Event Bus handoff cost, audio main-thread cost, hearing evaluation, and Burst simulation. PENDING_OQ6 remains explicitly NON-PASSING: an uncaptured/unsupported-platform run cannot satisfy AC21, and no diagnostic stress result can substitute for the supported-MVP measurement."
+    source: design/gdd/player-noise.md  # AC21 ownership (fresh re-review 2026-08-30)
+    owned_by: "Player Noise GDD (Technical Setup co-sign)"
+    consumed_by: [Player Noise GDD, sound_performance_audit.md, PerformanceFixture]
+
+  - name: noise_source_catalog
+    value: "MVP: {movement, burst} — exactly two channels"
+    safe_range: "MVP-locked source set; Target extension requires its own GDD"
+    note: "MVP noise-source boundary (rev 2026-08-31): the NoiseEmitter's MVP source set is EXACTLY {movement (step_event relay), burst (landing publication)} — scoped to the MVP profile, not a permanent invariant. No persistent/looped emitter, no Lure object, no environmental-noise authoring exists in MVP; MVP fixtures REJECT any third noise kind. Target-tier Lure (game-concept Pillar 3) enters ONLY through its own dedicated GDD and schema revision under the gated Target profile (AlertPropagation capability handshake) — it will reuse the raw NoiseEmitter publication and Perception hearing contracts but never the Burst throw/spend/pickup lifecycle or the movement step_event path. No implementation may add a Lure source under the current Player Noise document revision."
+    source: design/gdd/player-noise.md  # MVP noise-source boundary (fresh re-review 2026-08-30)
+    owned_by: "Player Noise GDD (Game Concept co-sign)"
+    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, Level GDD]
+
+  - name: fixture_tolerance_classes
+    value: "gameplay_contract ≤ 5×10⁻³ m; oracle_quantizer ≤ 1×10⁻³ m absolute; pure_math_relative ≤ 1×10⁻⁶ relative"
+    safe_range: "locked three-class policy"
+    note: "Tolerance classes (rev 2026-09-01): (1) gameplay_contract — the 5 mm CompareTolerance gate for gameplay-assertion comparisons (including AC15b re-anchor assertions); (2) oracle_quantizer — the 1 mm absolute tolerance for expected-vs-computed static-oracle records (receiver/occlusion probes); (3) pure_math_relative — the 1×10⁻⁶ relative precision for pure mathematical F4/oracle comparisons only. Every tolerance-bearing fixture record MUST declare exactly one class; the validator gates per class, and an unlabeled generic formula tolerance fails closed. The pure_math_relative class is never a gameplay tolerance."
+    source: design/gdd/fixtures/noise-fixture-spec.md  # tolerance-class reconciliation (fresh re-review 2026-08-30)
+    owned_by: "Player Noise GDD (QA co-sign)"
+    consumed_by: [Player Noise GDD, Level GDD, PerformanceFixture]
+
+  - name: validation_leg_split
+    value: "ConfigValidatorFixture (runtime config) vs LevelFixture (authored content) — disjoint failure-code namespaces"
+    safe_range: "locked validator split"
+    note: "AC10/AC20 validation split (rev 2026-08-31): runtime configuration validation (global config domain, finite values, angle domain, canonical dt_max, radius ordering, cadence monotonicity) is owned by ConfigValidatorFixture with the CFG_* failure-code namespace; authored content certification (authored h_landing, discriminant/root per volume, selected root, R_actual band, clearance, landing surface, envelope, gate causality, route evidence, restart transaction) is owned by LevelFixtureValidator with the existing LVL/registry result-code set (INVALID_F4_RANGE, MISSING_LANDING_SURFACE, etc.). Neither validator synthesizes the other's evidence; a runtime config fixture never certifies level volumes and a level fixture never asserts global config values."
+    source: design/gdd/player-noise.md  # AC10/AC20 validator split (fresh re-review 2026-08-30)
+    owned_by: "Player Noise GDD (QA co-sign)"
+    consumed_by: [Player Noise GDD, Level GDD, PerformanceFixture]
+
+  - name: full_room_restart_transaction
+    value: "one atomic, player-discoverable recovery transaction"
+    safe_range: "locked transactional semantics"
+    note: "Restart contract (rev 2026-08-31): the full-room restart is ONE atomic transaction — (1) cancel/invalidate any InFlight Burst flight without refund; (2) discard pending prior-epoch noise facts, queued relays, and hearing work; (3) reset player, guard, gate markers, exit, and movement ledger to the authored attempt state; (4) restore ALL authored pickups to Placed (clears the carried slot); (5) open a fresh session envelope per the lifecycle transition table (same session_id allowed, attempt_epoch = 1); (6) clear residual wariness and pending telegraphs to the authored attempt state. PARTIAL APPLICATION IS A FAILURE, NOT A STATE — the transaction is all-or-nothing and LevelFixtureValidator asserts atomicity with RESTART_NOT_ATOMIC. Player-facing discoverability: the restart is exposed as an explicit pause-menu entry plus a post-double-spend prompt (both pickups Consumed) and is documented in-game as the only path that restores spent pickups; death/segment reset NEVER restores a thrown Burst. The restart affordance is owned by Game Flow/Input; the state transaction is owned by Session/Lifecycle; gate/objective reset is owned by Level."
+    source: design/gdd/player-noise.md  # restart transaction (fresh re-review 2026-08-30)
+    owned_by: "Player Noise GDD (Session/Lifecycle co-sign)"
+    consumed_by: [Player Noise GDD, Level GDD, Guard AI FSM GDD]
+
+level_burst_route:
+  source: design/gdd/player-noise.md  # AC20 co-sign; canonical manifest owner is Level/Content
+  manifest:
+    fixture_id: WW-MVP-BURST-ROUTE-01
+    schema_version: WW-MVP-BURST-ROUTE-1.2
+    profile: MVP
+    coordination_service: absent
+    validator_id: LevelFixtureValidator.v1
+    validator_contract: LevelFixtureValidator.v1
+    canonical_manifest: design/levels/mvp-burst-route-fixture.md
+    certification_status: UNCAPTURED
+    validation_result: ACTUAL_CAPTURE_UNAVAILABLE
+    actual: UNCAPTURED
+    provenance:
+      authored_by: [Level/Content, Player Noise]
+      source_documents: [design/gdd/player-noise.md, design/gdd/perception.md, docs/architecture/adr-0002-physics-collision-contract.md, design/registry/entities.yaml]
+      source_revision: 2026-08-30
+      runtime_capture: not_available
+  required_marker_counts: {checkpoint: 1, guard: 1, patrol: 1, receiver: 1, pickup: 2, gate_entry: 1, gate_exit: 1}
+  required_pickup_ids: [burst_gate_pickup_01, burst_reserve_pickup_01]
+  required_sections: [manifest, provenance, evidence_contract, coordinate_contract, marker_lifecycle, pickup_interactions, pickup_state_transitions, geometry_variants, solids, triggers, route_evidence, route_causality, gate_transitions, synthetic_receiver_endpoints, receiver_probes, occlusion_probes, valid_throw_volumes, negative_validation_cases, failed_gate_spends, teaching_sequence, signal_a_visibility, restart_transaction, guard_extended_search_patrol, workload_profiles, trace_contract]
+  field_contract:
+    manifest: [fixture_id, schema_version, profile, coordination_service, validator_id, validator_contract, canonical_manifest, provenance, certification_status, validation_result, actual]
+    provenance: [authored_by, source_documents, source_revision, runtime_capture]
+    evidence_contract: [evidence_status, actual, expected_actual_pair, comparison, missing_fields]
+    coordinate_contract: [world_frame, units, hearing_plane, room_aabb_min, room_aabb_max, room_ceiling_y, e20_world_layer, forbidden_layers, query_trigger_policy, physics_scene, auto_sync_transforms, sync_transforms_per_burst_batch, actual]
+    marker_lifecycle: [stable_id, type, world_position_or_aabb, layer, expected_initial_state, expected_transition_states, actual]
+    pickup_interactions: [interaction_id, pickup_id, reach_route_id, trigger, expected_precondition, expected_result, telemetry_event, telemetry_only, emits_noise_published, actual]
+    pickup_state_transitions: [transition_id, interaction_id, pickup_id, from_state, to_state, expected_spend_committed, expected_fact_id, expected_noise_published, actual]
+    geometry_variants: [variant_id, source_records, expected_purpose]
+    solids: [id, variant_id, layer, is_trigger, surface_role, surface_top_y_m, bounds_min, bounds_max]
+    triggers: [id, variant_id, layer, is_trigger, bounds_min, bounds_max]
+    route_evidence: [route_id, from_marker, to_marker, obstruction_ids, player_agent_radius_m, navmesh_area_mask, expected_path_status, path_complete, path_samples, stable_path_hash, pickup_reach, e20_linecast, gate_state, failed_gate_spend, required_failed_cases, actual]
+    route_causality: [causality_id, pickup_marker_id, pickup_reach_route_id, pickup_interaction_id, pickup_state_transition_id, accepted_throw_source_event_id, throw_snapshot_id, flight_handle_id, landing_contact_probe_id, landing_surface_id, landing_fact_id, receiver_probe_id, hearing_relay_fact_id, entry_id, investigate_commit_id, gate_transition_id, gate_entry_marker_id, expected_gate_entry_transition, gate_exit_marker_id, gate_exit_reach_route_id, expected_gate_exit_reachable, route_evidence_id, expected_order, actual]
+    gate_transitions: [transition_id, gate_marker_id, owner, from_state, to_state, trigger_event, trigger_noise_kind, trigger_decision_id, causal_session_id, causal_attempt_epoch, causal_fact_id, landing_fact_id, step_id, causal_entry_id, expected_cause, expected_order_after, expected_order_before, gate_state_after_failed_spend, gate_exit_reachable_after_failed_spend, actual]
+    synthetic_receiver_endpoints: [endpoint_id, endpoint_authoring_mode, world_position, geometry_variant_id, purpose, actual]
+    receiver_probes: [probe_id, geometry_variant_id, noise_kind, nominal_radius_m, endpoint_authoring_mode, endpoint_source_id, source_position_id, source_position_ws, hearing_origin_ws, guard_feet_ws, guard_eye_ws, dy_m, dy_max_m, d_noise_xz_m, expected_r_eff_m, expected_linecast_clear, expected_hearing, intended_fsm_response, expected_blocker_id, boundary_semantics, tolerance_class, tol_m, actual]
+    occlusion_probes: [probe_id, segment_id, geometry_variant_id, origin_ws, guard_endpoint_ws, expected_blocker_id, expected_linecast_clear, trigger_ignored, tolerance_class, tol_m, actual]
+    valid_throw_volumes: [volume_id, geometry_variant_id, launch_position_ws, launch_direction_xz, open_volume_bounds, landing_surface_id, landing_surface_y_m, landing_contact_mode, target_marker_id, route_id, source_pickup_id, throw_snapshot_id, v0_mps, theta_deg, h_release_m, h_landing_m, delta_y_m, projectile_radius_m, epsilon_contact_m, contact_ambiguity_tolerance_m, angle_domain_result, discriminant_m2ps2, t_minus_s, t_plus_s, selected_t_land_s, root_policy, r_actual_m, range_gate, ceiling_margin_m, lateral_margin_m, collision, landing_envelope, expected, formula_tolerance_class, formula_relative_tol, placement_tolerance_class, placement_tol_m, diagnostic_simulation_envelope_m, actual]
+    negative_validation_cases: [case_id, category, geometry_variant_id, complete_inputs, expected_rejection_code, angle_domain_result, discriminant_m2ps2, root_result, r_actual_m, range_gate, initial_overlap, geometry_validation_result, grazing_surface_id, grazing_clearance_m, no_runtime_launch, no_spend, flight_handle_id, fact_id, source_event_id, burst_state, actual]
+    failed_gate_spends: [case_id, stimulus, terminal_event, terminal_order, terminal_timing, pickup_state, spend_committed, flight_handle_id, source_event_id, fact_id, noise_count, refund, landing_position, landing_navmesh_status, landing_guard_reachable, fallback_type, gate_transition_eligibility, gate_state_after_failed_spend, gate_exit_reachable_after_failed_spend, reserve_state, reserve_route_id, reanchor_patrol_clear, reanchor_patrol_zone_id, reanchor_patrol_extend_s, reserve_visibility_window, reserve_reachable_after_extend, rejection_code, epoch_assertion, expected_landing, actual]
+    teaching_sequence: [step_id, order, beat, geometry_variant_id, player_start_position_ws, player_route_samples, player_observation_position_ws, expected_stride_state, expected_step_event_ids, expected_rustle_fires, expected_guard_state, patrol_phase_window, expected_guard_observable_response, expected_crouch_control_no_fact, expected_teaching_outcome, pre_burst_requirement, actual]
+    signal_a_visibility: [record_id, causality_id, vantage_position_ws, vantage_to_guard_linecast_clear, expected_guard_initial_state, patrol_phase, source_timestamp, expected_burst_landing_position_ws, expected_noise_heard_relay_id, expected_investigate_commit_id, expected_orient_tell_window_s, expected_fsm_tick_bound_s, visibility_exclusions, expected_visible_causal_chain, actual]
+    restart_transaction: [transaction_id, trigger, prior_state, ordered_steps, all_or_nothing, canceled_flight_ids, canceled_fact_ids, gate_state_after, exit_state_after, pickup_states_after, carried_slot_after, session_envelope_after, attempt_epoch_after, residual_state_after, expected_recovery_outcome, actual]
+    guard_extended_search_patrol: [zone_id, causality_case_ids, noise_origin_ws, investigation_zone_bounds, patrol_bounds, expected_reanchor_extend_s, s_diff_resolved, visibility_window_s, reserve_route_clear_during_search, actual]
+    workload_profiles: [profile_id, purpose, active_guards, due_facts, evaluated_guard_fact_pairs, total_candidate_pairs, expected_linecast_count, expected_deferred_pairs, burst_flights, due_hearing_boundaries, required_budget_ms, cap_controls, actual]
+    trace_contract: [session_id, attempt_epoch, sample_id, source_timestamp_s, source_event_class_rank, source_event_id, fact_id, flight_handle_id, entry_id, epoch_transition_id, stale_work_assertion, expected_actual_pair, identity_reuse_within_session_epoch]
+
+  lifecycle_transition_table:  # authoritative source for attempt_epoch behavior; reproduced verbatim in player-noise.md §Ownership and referenced by perception.md, guard-ai-fsm.md, and player-movement-hide.md
+    owner: design/registry/entities.yaml
+    canonical_reproducers: [design/gdd/player-noise.md, design/gdd/perception.md, design/gdd/guard-ai-fsm.md, design/gdd/player-movement-hide.md]
+    full_room_restart_semantics: "Full-room restart clears the carried Burst slot AND restores all authored pickups to Placed. Death/segment-reset preserves the carried slot; a Placed instance that was the source of a carried Burst is not restored while the slot is occupied."
+    rows:
+      - event: "Death → capture (or vice versa)"
+        attempt_epoch: "One atomic transition; exactly one increment"
+      - event: "Player respawn (post-death)"
+        attempt_epoch: "Part of the same atomic transition; no additional increment"
+      - event: "Segment reset (room transition)"
+        attempt_epoch: "One atomic transition; exactly one increment"
+      - event: "Full-room restart"
+        attempt_epoch: "New session; same session_id allowed, fresh attempt_epoch = 1"
+      - event: "Scene reload"
+        attempt_epoch: "New session; fresh attempt_epoch = 1"
+      - event: "New playable attempt"
+        attempt_epoch: "New session; fresh attempt_epoch = 1"
+      - event: "Pause / resume"
+        attempt_epoch: "No increment; virtual clock freezes and resumes"
+      - event: "Pool / unpool"
+        attempt_epoch: "No increment; scheduler phase preserved"
+  conditional_field_rules:
+    route_evidence.required_failed_cases: "Required on every route record; use [] when failed_gate_spend is false and enumerate failed case IDs when it is true."
+    pickup_interactions.telemetry_only: "Must be true for pickup-reached; pickup-reached is telemetry only and cannot mutate pickup state, spend a Burst, or publish NoisePublished."
+    pickup_state_transitions.placed_to_carried: "The accepted Interact record must prove reachable=true and the typed transition Placed → Carried with expected_spend_committed=false and expected_noise_published=false."
+    route_causality.target_and_route_fields: "Required on every causality record; target-marker semantics are logical-objective semantics for this MVP fixture, while route_evidence_id and gate_exit_reach_route_id identify the physical route evidence."
+    gate_transitions.owner_and_causality: "The Level owner alone mutates gate state. A valid blocked → open transition must match the same captured investigate decision's session, epoch, fact_id, entry_id, and causal order."
+    gate_transitions.kind_binding: "Required on every gate-open record (rev 2026-08-31): trigger_noise_kind ∈ {Movement, Burst} is the self-identifying trigger stream and binds the transition to the causing noise kind (Burst for the MVP fixture — a movement pip can never open the gate); the responsible source id is landing_fact_id for Burst and step_id for Movement, and landing_fact_id must resolve to the same causal chain's captured published landing fact. A gate-open record without both bindings, a null landing_fact_id, a Movement step_id where a Burst landing is required, or a landing_fact_id that is not the chain's landing contact, fails closed (MISSING_REQUIRED_FIELD or INVALID_GATE_TRANSITION)."
+    receiver_probes.expected_blocker_id: "Required on every probe; use none when expected_linecast_clear is true and the registered blocker ID when it is false."
+    receiver_probes.endpoint_authoring_mode: "Required on every probe; values are real_guard_endpoint or synthetic_endpoint. real_guard_endpoint requires endpoint_source_id to resolve to the authored guard marker and registered eye endpoint; synthetic_endpoint requires an explicitly authored test endpoint and cannot certify the playable MVP route."
+    receiver_probes.boundary_semantics: "Required on every probe; use inclusive at the radius boundary, exclusive_cutoff at the zero-effective-radius cutoff, and not_applicable otherwise."
+    receiver_probes.falloff_datum: "Required on every probe (rev 2026-08-31): guard_feet_ws is the explicit falloff datum and dy_m = |hearing_origin_ws.y − guard_feet_ws.y|; the guard eye endpoint is the occlusion-ray endpoint only and never anchors the falloff. R_eff = nominal_radius × (1 − dy_m / dy_max_m), exclusive at dy_m ≥ dy_max_m."
+    receiver_probes.source_position_id: "Required on every playable-route receiver probe (rev 2026-08-31): the probe's source position must be DERIVED from the captured published landing position of the referenced throw volume (source_position_id = the throw volume's landing contact), never independently authored. Independently authored synthetic source positions are test-only and cannot certify the playable MVP route causality (route_causality.receiver_probe_id must resolve to a probe whose source_position_id references the same causality chain's landing)."
+    route_causality.throw_snapshot_chain: "Required on every route causality record (rev 2026-08-31): throw_snapshot_id must resolve to the immutable ThrowSnapshot shared by runtime, preview, and fixture — the snapshot is a causality PRECONDITION and is asserted field-for-field (parity: runtime snapshot == preview snapshot == fixture snapshot); landing_contact_probe_id and landing_surface_id bind the physical landing into the same chain; receiver_probe_id must resolve to a probe whose source is the captured landing contact of THIS chain's throw."
+    gate_transitions.gate_negative: "Required on every failed-spend-adjacent gate record (rev 2026-08-31): gate_state_after_failed_spend must be blocked and gate_exit_reachable_after_failed_spend must be false for every failed_gate_spends case; no void, timeout-fallback, off-NavMesh, unreachable, initial-overlap, or death-cancelled landing may appear in any gate_transitions causal chain — a guard Investigate alone never opens the gate. Violation maps to INVALID_GATE_TRANSITION or the new GATE_OPENED_BY_INVALID_LANDING code."
+    failed_gate_spends.landing_gate_fields: "Required on every failed-spend record (rev 2026-08-31): landing_navmesh_status (on_navmesh | off_navmesh | void), landing_guard_reachable (boolean), fallback_type (none | closest_standoff | void_last_simulated | not_applicable), gate_transition_eligibility (eligible | ineligible — ineligible for every failed/fallback landing), gate_state_after_failed_spend (blocked), gate_exit_reachable_after_failed_spend (false)."
+    teaching_sequence.order_and_crouch_control: "Required section (rev 2026-08-31): ordered by the order field; the first Walk and Run teaching demonstrations MUST occur at lower order values than the first Burst-spend beat (the player learns movement noise before spending a Burst); every sequence includes a Crouch control case whose expected_crouch_control_no_fact is true (no step_event, no NoisePublished while crouched); expected_guard_observable_response must name the visible orient/Investigate response observable from player_observation_position_ws."
+    signal_a_visibility.required_fields: "Required section (rev 2026-08-31): every record asserts a guaranteed first-session causal observation — the vantage has clear LOS to the guard (vantage_to_guard_linecast_clear=true), the guard starts in a hearing-eligible state (Patrol; visibility_exclusions must list HideSpotFront, Chase, cooldown, and stale-epoch exclusion), the expected Burst landing position is the chain's captured landing (not a synthetic source), the orient-tell window is bounded by the FSM tick (expected_fsm_tick_bound_s), and the visible causal chain lands → NoiseHeardRelay → investigate-commit → visible guard movement is asserted end-to-end."
+    restart_transaction.atomicity: "Required section (rev 2026-08-31): the restart is ONE all-or-nothing transaction per full_room_restart_transaction; ordered_steps enumerate the six ordered atomic steps; all_or_nothing=true; any partial application maps to RESTART_NOT_ATOMIC; expected_recovery_outcome asserts both pickups Placed, carried slot cleared, attempt_epoch=1, gate/exit at authored initial states, and residual state cleared."
+    guard_extended_search_patrol.required_fields: "Required section (rev 2026-08-31): the authored investigation-zone bounds and patrol bounds for the failed-spend re-anchor window; expected_reanchor_extend_s is computed from the canonical reanchor_giveup_timeout formula with the level's resolved difficulty scalar s_diff (s_diff_resolved — the S_DIFF speed-ratio form is struck rev 2026-08-31); reserve_route_clear_during_search must be true for certification — a reserve route intersecting the guard's extended search is a certification failure."
+    tolerance_class.required: "Required on every tolerance-bearing record (rev 2026-08-31): values are gameplay_contract (≤ 5×10⁻³ m — the CompareTolerance gate) or oracle_quantizer (≤ 1×10⁻³ m absolute — expected-vs-computed static-oracle records). The validator gates per class; an unlabeled tolerance-bearing record fails closed with INVALID_TOLERANCE."
+    valid_throw_volumes.landing_surface: "Required on every positive throw; landing_surface_id must resolve to a World, non-trigger solid in the geometry variant, landing_surface_y_m must equal its authored contact surface, and landing_contact_mode must be surface_top_world_solid. An open-volume-only record fails closed."
+    solids.surface_fields: "surface_role is landing_surface, ceiling, or occluder. surface_top_y_m is numeric for landing_surface/ceiling and null for occluder; a landing surface must be a World non-trigger solid referenced by a positive throw volume."
+    occlusion_probes.trigger_ignored: "Required on every probe; true only for the trigger-geometry probe and false for ordinary clear or solid probes."
+    negative_validation_cases: "All listed keys are required. Formula fields may use NOT_EVALUATED or null only when the expected rejection occurs before that calculation; no-launch identity fields are null by contract. A Level-owned authored-grazing case must identify grazing_surface_id, grazing_clearance_m, and geometry_validation_result=REJECT; non-grazing cases use grazing_surface_id=null, grazing_clearance_m=null, and geometry_validation_result=NOT_EVALUATED."
+    failed_gate_spends.landing_position: "Required on every record; use the captured published contact for collision, the captured last sphere center for timeout, and null only for death-cancelled flights that never land."
+    failed_gate_spends.terminal_timing: "Required on every record; contact cases capture flight elapsed, SphereCast fraction, contact event time, timeout_boundary_s=3.0, and comparison_result=contact_before_or_at_timeout; timeout captures timeout_wins with null contact; death captures death_wins before any collision/timeout callback."
+    failed_gate_spends.epoch_assertion: "Required on every record. Normal terminal cases use increment=0 and stale_prior_epoch_work=not_applicable; failed_death_01 requires one lifecycle-owned epoch increment before any late callback and stale work rejection."
+    failed_gate_spends.stale_work_assertion: "Required only for death-cancelled in-flight records; a late old-epoch callback must be ignored with no collision, timeout, fact, relay, decision, or presented audio."
+    failed_gate_spends.reanchor_patrol_clear: "Required on every failed_gate_spends record (Pass A revision B 2026-08-30). The reserve pickup route must be clear of the guard's extended-search patrol zone during the re-anchor timer window. This field records the NavMesh path-clearance probe result: true = the reserve route from the checkpoint is unobstructed by the guard's active-investigation area during the extended re-anchor window; false = the reserve route intersects the guard's extended-search patrol, and the level is not certified until this is resolved. A failed gate pickup that leaves the reserve blocked by the guard's extended search is a certification failure, not a player routing failure."
+    failed_gate_spends.reanchor_patrol_zone_id: "The authored investigation-zone marker id used for the re-anchor clearance probe. Identifies the guard's search area around the failed gate pickup's noise origin."
+    failed_gate_spends.reanchor_patrol_extend_s: "The extended re-anchor timer duration used for the clearance probe, in seconds. Derived from the registered t_reanchor formula with the level's difficulty scaling parameters."
+    failed_gate_spends.reserve_visibility_window: "The guard's extended-search patrol visibility window, in seconds, during which the reserve route must remain clear. Must cover the full reanchor_patrol_extend_s window."
+    failed_gate_spends.reserve_reachable_after_extend: "Boolean: true if the reserve pickup is reachable via the recorded NavMesh route after the full re-anchor patrol window expires; false if the reserve becomes reachable only after the guard leaves the area. False is a certification failure."
+    trace_contract.source_order: "source_event_class_rank and source_event_id are required for deterministic same-timestamp allocation; movement rank=0 and Burst rank=1. Listener/thread arrival order is never an identity source."
+    trace_contract.epoch_barrier: "epoch_transition_id and stale_work_assertion are required when a lifecycle transition invalidates queued or callback work; old-epoch work must not produce a successful record."
+    workload_profiles.cap_controls: "Required on every profile and lists the caps exercised by that profile, including the boundary/fact/guard/pair controls when applicable."
+  evidence_contract:
+    evidence_status: [UNCAPTURED, CAPTURED]
+    actual_union:
+      - UNCAPTURED
+      - {status: CAPTURED, observed: record_specific_typed_object}
+    expected_actual_pair: {expected: record_specific_typed_object, actual: actual_union}
+    comparison: named_record_tolerance
+    missing_fields: fail_closed
+  workload_profiles:
+    - profile_id: supported_mvp
+      purpose: supported_mvp_envelope
+      active_guards: 1
+      due_facts: 1
+      total_candidate_pairs: 1
+      evaluated_guard_fact_pairs: 1
+      expected_linecast_count: 1
+      expected_deferred_pairs: 0
+      burst_flights: 1
+      due_hearing_boundaries: 1
+      required_budget_ms: 2.0
+      cap_controls: [max_hearing_boundaries_per_frame, max_hearing_guards_per_boundary, max_hearing_facts_per_boundary, max_hearing_pairs_per_boundary]
+      actual: UNCAPTURED
+    - profile_id: stress_30_guard_8_fact
+      purpose: stress_coverage_not_support_promise
+      active_guards: 30
+      due_facts: 8
+      total_candidate_pairs: 240
+      evaluated_guard_fact_pairs: 30
+      expected_linecast_count: 30
+      expected_deferred_pairs: 210
+      burst_flights: 1
+      due_hearing_boundaries: 1
+      required_budget_ms: 2.0
+      cap_controls: [max_hearing_guards_per_boundary, max_hearing_facts_per_boundary, max_hearing_pairs_per_boundary]
+      actual: UNCAPTURED
+  invariants:
+    root_policy: minimum_strictly_positive
+    root_policy_proof: "Two-regime proof (rev 2026-08-30 — the prior 'at most one strictly positive member unless D = 0' claim is STRUCK as false). Roots t_minus = (v0·sinθ − √D)/g and t_plus = (v0·sinθ + √D)/g with D > 0. Regime 1 (Δy ≥ 0, landing at or below release): product of roots = −2Δy/v0²cos²θ ≤ 0, so at most one root is strictly positive — the descending crossing t_plus — and it exists because the trajectory starts at the release height with upward velocity. Regime 2 (Δy < 0, landing above release and below the apex): both roots are strictly positive (ascending and descending crossings of the elevated landing plane); the minimum rule selects the ASCENDING crossing t_minus. D = 0: one repeated root accepted exactly if it is strictly positive. D < 0: reject. Roots at or below zero are always discarded. UNIQUENESS COMES FROM THE MIN-SELECTION RULE, NOT FROM ROOT COUNT — the policy 'select the minimum strictly positive root' is deterministic in every regime because the selected value is unique among the filtered candidates, even when two candidates exist."
+    valid_angle_domain: "0° < theta ≤ 45°"
+    f4_range_m: "[8, 12] for every authored valid throw volume"
+    reserve_after_failed_gate_spend: "Placed and reachable after wall, ceiling, void, and death cases"
+    mvp_response: Investigate
+    target_only_responses_rejected: [peer-recruit, locked-zone]
+    actual_capture_required: true
+    uncaptured_is_pass: false
+    nominal_radius_only_is_pass: false
+    f4_validator_ownership: "Global BurstThrowConfig validates angle, discriminant/root, and loaded R_actual range; LevelFixtureValidator validates authored geometry, endpoint heights, placement/collision ambiguity, and runtime/preview/fixture parity. Neither validator treats UNCAPTURED as PASS."
+    authored_grazing_ownership: "LevelFixtureValidator alone rejects tangent/edge/zero-clearance/ambiguous authored physical contacts with AUTHORED_GRAZING_GEOMETRY_REJECTED after F4 math validation; a finite positive D=0 repeated root remains mathematically valid unless the authored geometry independently grazes."
+    target_marker_semantics: "In the MVP fixture, valid_throw_volumes.target_marker_id identifies the logical gate-entry objective opened by the resulting Noise/Investigate chain; it is not a physical landing-point assertion. Physical landing is certified by launch_position, launch_direction_xz, landing_surface_id, landing_surface_y_m, open_volume_bounds, F4 range, collision, and landing_envelope."
+    pickup_interaction_ownership: "LevelFixture requires an explicit reachable Interact edge and Placed → Carried state record; pickup-reached remains telemetry-only and pickup does not publish NoisePublished."
+    gate_transition_ownership: "Level owns the typed gate transition; causal session/epoch/fact/entry identities must match the noise Investigate decision before gate exit reachability can pass."
+    receiver_endpoint_ownership: "Playable MVP receiver probes use real_guard_endpoint tied to guard_mvp_01; synthetic endpoints are test-only and never substitute for the guard eye."
+    death_epoch_barrier: "failed_death_01 increments attempt_epoch exactly once, cancels the in-flight spend without refund, and rejects all late prior-epoch callbacks/work before fact, relay, decision, or audio presentation."
+    gate_negative_on_invalid_landing: "Only a CERTIFIED positive-throw landing (valid throw volume, physical World landing surface, in R_eff hearing distance, clear E20 path, guard-reachable investigation) may appear in a gate_transitions causal chain. A guard Investigate decision alone NEVER opens the gate: void, timeout-fallback, off-NavMesh, unreachable, initial-overlap, and death-cancelled landings all publish noise and may cause investigations but are gate-INELIGIBLE, asserted by failed_gate_spends.gate_transition_eligibility=ineligible and gate_state_after_failed_spend=blocked (rev 2026-08-31)."
+    receiver_derived_from_landing: "Playable-route receiver probes derive their source position from the captured published landing contact of the same causal chain's throw volume; independently authored synthetic source positions cannot certify the playable MVP route (rev 2026-08-31)."
+    teaching_before_spend: "The first Walk and Run teaching demonstrations precede the first Burst-spend beat in teaching_sequence order; every teaching sequence includes a Crouch control case proving no movement fact (rev 2026-08-31)."
+    evidence_state_ownership: "LevelFixture owns certification_status and actual evidence state; registry owns schema and stable result-code vocabulary."
+  result_codes: [PASS, MISSING_REQUIRED_FIELD, MISSING_MARKER, INVALID_CARDINALITY, INVALID_TOLERANCE, INVALID_F4_RANGE, INVALID_ANGLE, INVALID_ROOT, INVALID_ROUTE, AMBIGUOUS_COLLISION, AUTHORED_GRAZING_GEOMETRY_REJECTED, INITIAL_OVERLAP_REJECTED, EXPECTED_NEGATIVE_CASE, E20_LAYER_MISMATCH, TRIGGER_POLICY_MISMATCH, ACTUAL_CAPTURE_UNAVAILABLE, CONTRADICTORY_RECORD, INVALID_PICKUP_TRANSITION, INVALID_GATE_TRANSITION, GATE_OPENED_BY_INVALID_LANDING, ENDPOINT_MODE_MISMATCH, MISSING_LANDING_SURFACE, EPOCH_BARRIER_MISMATCH, STALE_WORK_NOT_CANCELLED, RESTART_TRANSACTION_MALFORMED, RESTART_NOT_ATOMIC, TEACHING_SEQUENCE_OUT_OF_ORDER, SIGNAL_A_VISIBILITY_UNPROVEN]
+  validation_result_mapping:
+    ACTUAL_CAPTURE_UNAVAILABLE: "Manifest or any required record remains UNCAPTURED or contains a REQUIRED_RUNTIME_* placeholder."
+    GATE_OPENED_BY_INVALID_LANDING: "A void, timeout-fallback, off-NavMesh, unreachable, initial-overlap, or death-cancelled landing appears in a gate_transitions causal chain, or a failed_gate_spends case leaves the gate open/exit reachable (rev 2026-08-31)."
+    RESTART_TRANSACTION_MALFORMED: "A restart_transaction record is missing required fields, has unordered steps, or contradicts the full_room_restart_transaction registry entry (rev 2026-08-31)."
+    RESTART_NOT_ATOMIC: "A restart transaction applied partially (any of the six ordered steps unverified) — partial application is a failure, not a state (rev 2026-08-31)."
+    TEACHING_SEQUENCE_OUT_OF_ORDER: "A teaching_sequence places a Burst-spend beat before the first Walk and Run teaching demonstrations, or omits the Crouch control case (rev 2026-08-31)."
+    SIGNAL_A_VISIBILITY_UNPROVEN: "A signal_a_visibility record lacks the guaranteed causal chain (clear vantage LOS, hearing-eligible initial guard state, captured landing source, FSM-tick-bounded orient tell), so the first-session/portfolio causal observation is uncertified (rev 2026-08-31)."
+    EXPECTED_NEGATIVE_CASE: "A negative stimulus was accepted, spent, published, or observed with a rejection code different from its expected rejection code."
+    INVALID_ANGLE: "Global BurstThrowConfig rejects theta outside 0° < theta ≤ 45° before launch/spend."
+    INVALID_ROOT: "Global BurstThrowConfig rejects D < 0 or no strictly positive root before launch/spend; a positive repeated D=0 root is valid math when t_minus=t_plus>0."
+    INVALID_F4_RANGE: "Global BurstThrowConfig rejects a positive-root R_actual outside [8,12] m before fixture certification."
+    AUTHORED_GRAZING_GEOMETRY_REJECTED: "LevelFixtureValidator rejects tangent, edge, zero-clearance, or ambiguous authored physical contact after the F4 math oracle; it does not reject a positive repeated D=0 root by itself."
+    INITIAL_OVERLAP_REJECTED: "Burst launch initial-overlap probe rejects before spend and leaves the pickup Carried."
+    INVALID_PICKUP_TRANSITION: "The required reachable Interact edge or typed Placed → Carried state transition is missing, contradictory, or observed with a spend/noise side effect."
+    INVALID_GATE_TRANSITION: "The Level-owned gate transition lacks typed before/after states or does not match the causal investigate decision identity/order."
+    ENDPOINT_MODE_MISMATCH: "A receiver endpoint mode/source is missing, resolves to the wrong guard endpoint, or uses a synthetic endpoint for playable MVP certification."
+    MISSING_LANDING_SURFACE: "A positive throw volume lacks a physical World non-trigger landing solid or its authored landing surface height/contact mode does not match the geometry variant."
+    EPOCH_BARRIER_MISMATCH: "A death/reset does not perform the required lifecycle-owned epoch transition or permits prior-epoch work to remain eligible."
+    STALE_WORK_NOT_CANCELLED: "A late prior-epoch flight callback or queued item produces collision, timeout, fact, relay, decision, or presented audio after death cancellation."
+    PASS: "All required expected/actual fields, geometry, route, identity, and validator assertions pass after capture."
+  note: "Level GDD #8 remains provisional. The manifest is a deterministic, non-production fixture; unknown, missing, malformed, contradictory, ambiguous, REQUIRED_RUNTIME_VALUE/HASH, and UNCAPTURED values fail closed. Initial overlap is a no-spend rejection and is distinct from the four consumed gate-pickup failed-spend cases."
+  consumed_by: [Player Noise GDD, Level GDD, Perception GDD, sound_performance_audit.md]
+
+player_noise_diagnostics:
+  source: design/gdd/player-noise.md  # bounded hearing/event transport amendment 2026-08-29
+  codes:
+    event_bus_queue_overflow_rejected: "event-bus-queue-overflow-rejected"
+    event_bus_downstream_handoff_retry_exhausted: "event-bus-downstream-handoff-retry-exhausted"
+    perception_hearing_queue_overflow_rejected: "perception-hearing-queue-overflow-rejected"
+    perception_deferred_boundary_overflow_rejected: "perception-deferred-boundary-overflow-rejected"
+    perception_hearing_work_overflow_rejected: "perception-hearing-work-overflow-rejected"
+    perception_hearing_deadline_missed: "perception-hearing-deadline-missed"
+    audio_cue_deadline_missed: "audio-cue-deadline-missed"
+    burst_backlog_clamped: "burst-backlog-clamped"
+    burst_launch_blocked: "burst-launch-blocked"
+    burst_terminal_event_time_mismatch: "burst-terminal-event-time-mismatch"
+    level_fixture_actual_capture_unavailable: "level-fixture-actual-capture-unavailable"
+    level_fixture_expected_negative_mismatch: "level-fixture-expected-negative-mismatch"
+    level_fixture_missing_landing_surface: "level-fixture-missing-landing-surface"
+    level_fixture_invalid_pickup_transition: "level-fixture-invalid-pickup-transition"
+    level_fixture_invalid_gate_transition: "level-fixture-invalid-gate-transition"
+    level_fixture_endpoint_mode_mismatch: "level-fixture-endpoint-mode-mismatch"
+    level_fixture_epoch_barrier_mismatch: "level-fixture-epoch-barrier-mismatch"
+    level_fixture_stale_work_not_cancelled: "level-fixture-stale-work-not-cancelled"
+  accounting_fields: [session_id, attempt_epoch, source_timestamp, source_timestamp_s, terminal_publication_time, t_publish, source_event_class_rank, source_event_id, fact_id, flight_handle_id, guard_eid, entry_id, queue_item_kind, source_kind, deadline, queue_state, boundary_timestamp, flight_elapsed_s, contact_fraction, contact_event_time, timeout_boundary_s, terminal_event, comparison_result, backlog_ticks, discarded_backlog_s, retry_count, queue_name, queue_depth, queue_capacity, rejection_code, diagnostic_code, pickup_id, interaction_id, transition_id, gate_marker_id, endpoint_authoring_mode, endpoint_source_id, audio_cue_id, cue_deadline_s, cancellation_reason, corroboration_count, corroboration_saturated]
+  result_mappings:
+    burst-backlog-clamped: "Burst accumulated time exceeded max_backlog_ticks; excess time was discarded and the terminal/replay record remains explicit."
+    burst-launch-blocked: "Throw was rejected before spend, including blocked stand or initial overlap; pickup remains Carried and no flight/fact identity is allocated."
+    level-fixture-actual-capture-unavailable: "Required actual evidence is UNCAPTURED or a REQUIRED_RUNTIME_* placeholder remains; maps to validation result ACTUAL_CAPTURE_UNAVAILABLE."
+    level-fixture-expected-negative-mismatch: "A negative case did not produce its expected rejection/no-spend outcome; maps to validation result EXPECTED_NEGATIVE_CASE."
+  note: "A retryable full queue is retried before terminal rejection. Terminal rejection, deadline miss, backlog clamp, blocked launch, and fixture evidence unavailability are explicit, serialized, and never represented as a successful hearing relay or certification pass."
+
+production_hearing_path:  # canonical 4-stage pipeline NoiseEmitter -> Event Bus -> PerceptionHearingService -> FSM (Pass A revision B 2026-08-30)
+  source: design/gdd/player-noise.md  # §Production hearing path; reproduced for registry authority
+  canonical_producer: design/gdd/player-noise.md
+  referenced_by: [design/gdd/perception.md, design/gdd/guard-ai-fsm.md, design/gdd/player-movement-hide.md, docs/architecture/adr-0001-event-messaging-bus.md]
+  stages:
+    - stage: 1
+      name: source_validation_and_allocation
+      owner: NoiseEmitter
+      identity_produced: fact_id
+      identity_propagated: "(session_id, attempt_epoch, source_event_id) -> fact_id (emitter-allocated, deterministic same-timestamp order)"
+      terminal_failure_code: burst-launch-blocked
+      notes: "Movement rejection (zero-displacement, malformed, out-of-order, duplicate) is logged and produces no fact; Burst preflight overlap rejects before spend and keeps Carried."
+    - stage: 2
+      name: transactional_event_bus_handoff
+      owner: Event Bus (ADR-0001)
+      identity_propagated: "(session_id, attempt_epoch, fact_id) envelope retained as handoff_pending until every active Perception token subscription returns a verdict"
+      terminal_failure_code: event-bus-downstream-handoff-retry-exhausted
+      notes: "Bus owns handoff failure; retry never allocates a new fact_id; the envelope is immutable and is never silently replaced."
+    - stage: 3
+      name: hearing_scheduler_admission
+      owner: Perception (PerceptionHearingService, R5)
+      identity_produced: entry_id
+      identity_propagated: "Perception-allocated entry_id at first-eligible relay of a live episode; otherwise relays the live entry_id from the latest event-sourced FSM liveness snapshot"
+      terminal_failure_code: perception-hearing-deadline-missed
+      notes: "Perception owns deadline miss; T_hearing is a success-or-explicit-failure deadline; the active subscription is the ADR-0001 token subscription, and the per-boundary guard/fact selection is a snapshot of that subscription."
+    - stage: 4
+      name: relay_consumption
+      owner: Guard AI FSM
+      identity_propagated: "consumed | ignored | stale outcome recorded as a separate keyed outcome record; the relay is never mutated"
+      terminal_failure_code: stale
+      notes: "FSM never allocates or re-derives fact_id or entry_id; ignored covers live-epoch suppression (HideSpotFront, Chase, cooldown, higher-ranked facts); stale covers epoch/terminal invalidation."
+  identity_propagation_order: "fact_id -> envelope identity -> entry_id -> FSM consumption outcome"
+  invariants:
+    identity_reuse_within_session_epoch: "Identities are unique within (session_id, attempt_epoch); no stage re-derives an upstream identity."
+    terminal_failure_owner_split: "Bus owns handoff failure (event-bus-downstream-handoff-retry-exhausted); Perception owns deadline miss (perception-hearing-deadline-missed); no late relay is silently admitted."
+    snapshot_vs_subscription: "Per-boundary guard/fact selection is a SNAPSHOT of the active token subscription; subscription is the persistent handle, snapshot is the per-boundary data."
+
+liveness_fact_lifecycle:  # Per-guard liveness fact publication/closure events; Pass A revision B 2026-08-30
+  source: design/gdd/guard-ai-fsm.md  # Liveness fact publication; reproduced for registry authority
+  canonical_producer: design/gdd/guard-ai-fsm.md
+  referenced_by: [design/gdd/perception.md, design/gdd/player-noise.md]
+  owner: Guard AI FSM (sole owner; Perception reads but never mutates)
+  scope: per guard_eid
+  session_envelope: [session_id, attempt_epoch, guard_eid, entry_id]
+  openers:
+    - event: investigate-commit
+      tier: Investigate
+      cause_values: [noise, sight-committed, cap-forced, hide-entry]
+      effect: "Perception sees the live entry_id; subsequent eligible noise relays carry the same id."
+    - event: Chase-entry
+      tier: Chase
+      cause_values: [threshold, hide-entry]
+      effect: "Perception sees the live entry_id; Chase-tier live episode suppresses new Investigate-tier commits."
+  closers:
+    - event: investigate-resolution
+      tier: Investigate
+      cause_values: [fruitless, sight-committed, cap-forced, capture, redirected, abandoned]
+      effect: "Perception sees no live episode; the next eligible relay may reserve a new entry_id."
+    - event: Chase-end
+      tier: Chase
+      cause_values: [time, sight-committed, capture, abandoned]
+      effect: "Perception sees no live episode; A and R resume (R6/R9)."
+    - event: Capture
+      tier: Investigate-witnessed-interior-inspection
+      cause_values: [carve_out_interior_inspection]
+      effect: "Perception sees no live episode; meter exits to Idle without a paired Chase-end (CR-PERCEPTION-01)."
+  lifecycle_closure:
+    - event: attempt_epoch_transition
+      cause_values: [death, capture, respawn, segment_reset, full_room_restart, scene_reload, new_playable_attempt]
+      effect: "Every guard's live episode is closed in the prior epoch before current-epoch processing; the close is recorded as stale."
+  invariants:
+    entry_id_no_alloc_when_live: "Perception never allocates a new entry_id while the guard's liveness fact is in the open window; relays carry the live entry_id."
+    liveness_window_exactly_open_close: "A guard has at most one live episode at any time; the liveness window is [opener, closer] and never reopens within an episode."
+    event_sourced_no_sync_query: "Perception reads the prior published liveness fact at the previous boundary; it never queries the FSM synchronously to decide allocation."
+    closure_cause_matches_record: "The liveness closure cause equals the closure record's cause field; only the lifecycle/session owner may close via attempt_epoch transition and that close is recorded as stale."
+    id_uniqueness_per_session_epoch: "Within (session_id, attempt_epoch, guard_eid), a new entry_id is allocated only after the prior liveness window is closed (and the prior id is never reused for a new episode)."
 
 trace_event_schema:
-  source: design/gdd/perception.md  # R12 v3.2 (C-4 pin); rev 3.2 = escalation-commit junction (blocker B3) + confirm-window-elapsed/cap-reached facts; schema with Telemetry GDD
-  direction_note: "Perception publishes sensing FACTS (LOS gain/break, noise relay, threshold-crossing, confirm-window-elapsed, chase-reached, cap-reached, reachability [rev 3.3 — J2: the un-gated per-tick reachable|unreachable verdict, SINGLE source for the F2 Chase-cap, the R15 give-up predicate, and the catch-gate geometry]); Guard AI FSM publishes DECISIONS (investigate-commit on every episode-OPENING path, Chase-entry [rev 3.3 — the FSM's Chase decision record; the meter's Chase row triggers on it so A/R freeze on ALL Chase paths incl. hide-entry and carve-out], Chase-end, Investigate-resolution, peer-recruit, locked-zone, Capture) — Perception never publishes an escalation; the FSM acts on Perception's facts and Perception consumes the FSM's decision facts (event-not-command holds in both directions — neither calls the other, R12 rev 3.3). Suppression rule (rev 3.3, J1; tier-scoped rev 3.4): the FSM publishes exactly one escalation decision per escalation tier — an episode's first in that tier, never a same-tier duplicate (investigate-commit at the Investigate tier, Chase-entry at the Chase tier); an episode that commits Investigate and later reaches Chase publishes BOTH records, in that order (AC-R8 positive leg / AC-F9); a confirm-window commit absorbed into a live episode emits no second record (ADJ-4). Each record carries its publisher class. entry_id is allocated by Perception at episode open (threshold-crossing, or first LOS, or first noise-heard of an episode [rev 3.3, J3], or the direct hide-entrance Chase open [rev 3.2]) and relayed — never allocated — by the FSM on decision records. Guard-head yaw is a Perception INPUT (rev 3.3, J4 — the classifier's cumulative-absolute yaw-change channel; registered in the interactions matrix)."
+  source: design/gdd/perception.md  # R12 v3.2 (C-4 pin); contract-hardening revision 2026-08-28
+  direction_note: "Perception publishes sensing FACTS; Guard AI FSM publishes DECISIONS. Every sensing fact and decision carries session_id + attempt_epoch. NoiseEmitter validates/deduplicates source events, allocates fact_id, and publishes raw NoisePublished; Perception owns hearing admission, relay creation, residual_at_hearing, and entry_id reservation; the FSM owns relay consumption outcomes and all behavioral decisions, allocating/deriving neither identity. The lifecycle/session owner alone increments attempt_epoch and atomically invalidates old queues."
+  envelope: [session_id, attempt_epoch, timestamp, publisher]
+  raw_event_types:
+    - name: NoisePublished
+      fields: [session_id, attempt_epoch, kind, source, movement_mode, resolved_nominal_radius, position, radius, fact_id, fact_publication_state, source_timestamp, terminal_publication_time, t_publish, timestamp, publisher, source_event_class_rank, source_event_id]  # raw emitter fact; movement_mode/resolved_nominal_radius are required for movement and not applicable to Burst; source_event_id = step_id for movement or flight_handle_id for Burst; source_event_class_rank movement=0/Burst=1; t_publish = source_timestamp for Movement and terminal_publication_time for Burst; terminal_publication_time is not applicable to Movement; fact_id is allocated once at accepted raw-fact publication after source-event deduplication; fact_publication_state = published|rejected|invalidated (the raw fact record exists only in these states; not_applicable/pending are Burst terminal record states) and requires nonzero fact_id exactly when published
+    - name: Liveness fact
+      fields: [session_id, attempt_epoch, guard_eid, entry_id, op, tier, cause, position, source_timestamp, timestamp, evaluated_at, publisher]  # FSM-owned liveness snapshot write (Pass A revision B 2026-08-30): entry_id is the opaque Perception-owned string carried unchanged by the FSM; source_timestamp is the lifecycle source ordering time, evaluated_at is the FSM publication/evaluation time, and Perception reads the prior published liveness fact at the previous boundary; the FSM publishes the open/close on every commit/resolution (op=open|close); publisher = GuardAISystem; AC12-P coverage requires this record to exist and to be writable by the FSM
   event_types:
     - name: LOS gain
       fields: [source, distance, guard, timestamp, publisher]  # publisher = sensing-fact (Perception)
     - name: LOS break
       fields: [source, distance, guard, timestamp, R, break_type, causal_class, guard_yaw_delta, a_pre_break, threshold_applied, spot_position, hide_spot_id, entry_id, publisher]  # R = numeric R at break (rev 3.2); break_type: hide | wall | segment; causal_class (rev 3.1 ADJ-2 + rev 3.2 ruling + rev 3.3 J4): peek-out | guard-sweep | hide-dive | wall/segment | segment — the R7/R11 cancel counter consumes peek-out and player-attributed wall/segment; guard-sweep/hide-dive/segment never increment it (rev 3.2); guard_yaw_delta = cumulative-ABSOLUTE head yaw change during the window (J4 classifier channel, net rotation rejected); a_pre_break + threshold_applied = CR-FSM-01 amendment (rev 3.6): present on HIDE-DIVE breaks only — a_pre_break is the numeric accumulated alert at the last pre-break sight tick, threshold_applied is T_hide_entry(R) evaluated at that same tick; spot_position + hide_spot_id + entry_id = CR-FSM-01b extension (rev 3.7): also HIDE-DIVE breaks only — the entered spot's authored world position + ID and the Perception-allocated episode id at the direct hide-entrance open (the FSM's fallback/Chase targets and entry_id relay consume these — FSM C1.3/C1.5); NO-ALLOC-WHEN-LIVE (rev 3.8): the hide-entrance allocation fires only when the guard signals no live episode via the published live-Investigate/GuardGoalMode facts — otherwise the break fact relays the live episode's existing entry_id (retarget-under-suppression path, FSM C1.3); the FSM's hide-entry tier gate compares a_pre_break vs threshold_applied (Chase if a_pre_break >= threshold_applied, Investigate-commit cause=hide-entry fallback otherwise)
     - name: Noise heard
-      fields: [kind, source, guard, fact_id, entry_id, consumption, timestamp, publisher]  # Perception relay of the NoiseEmitter — never a decision (rev 2026-08-28, B2: emitter-allocated ulong fact_id = transport/dedup token, one per published fact shared by ALL hearing guards; fact_id wraps only at 2^64 - 1 and is session-scoped; entry_id stays Perception-allocated at first-noise-heard of an episode [rev 3.3, J3], relayed never derived); BROADCAST to every in-range guard — one guard's consumption never invalidates another's relay (per-guard single-consumption, rev 3.3 — closes the R5/R12 single-consumer ambiguity); stale relays after Chase-end are dropped by the FSM, never re-heard
+      fields: [session_id, attempt_epoch, kind, source, movement_mode, resolved_nominal_radius, position, radius, guard_eid, fact_id, entry_id, source_timestamp, terminal_publication_time, t_publish, source_event_class_rank, source_event_id, evaluated_at, residual_at_hearing, consumption, timestamp, publisher]  # immutable Perception relay retaining the raw publication contract; guard_eid is the stable guard identity for this guard/fact pair; movement_mode/resolved_nominal_radius are required for movement and not applicable to Burst; fact_id is shared across hearing guards; entry_id is a Perception-owned reservation allocated after hearing admission and before FSM precedence only when the latest liveness snapshot has no live episode, otherwise the live id is relayed; t_publish = source_timestamp for Movement and terminal_publication_time for Burst; admission consumption=eligible; final consumed|ignored|stale is a separate keyed outcome record, never an in-place mutation or command
+    - name: Burst terminal
+      fields: [session_id, attempt_epoch, flight_handle_id, source_timestamp, terminal_publication_time, t_publish, terminal_event, flight_elapsed_s, contact_fraction, contact_event_time, timeout_boundary_s, comparison_result, terminal_position, fact_publication_state, fact_id, timestamp, publisher]  # event-time collision/timeout record; source_timestamp is the accepted Throw input-edge ordering time, terminal_publication_time is the terminal resolution time, and t_publish equals terminal_publication_time; fact_publication_state = not_applicable|pending|published|rejected|invalidated; fact_id is nullable and nonzero only when published; contact_fraction/contact_event_time are null for timeout/death cancellation; exactly one terminal winner; contact_event_time = flight_elapsed + contact_fraction × dt_max (alpha=0 for initial-overlap terminal check) and is a derived fixed-step event time, never used as source_timestamp
+    - name: Queue rejection
+      fields: [session_id, attempt_epoch, queue_item_kind, guard_eid, source_kind, source_timestamp, terminal_publication_time, t_publish, deadline, source_event_id, fact_id, queue_name, queue_state, queue_depth, queue_capacity, retry_count, rejection_code, timestamp, publisher]  # reject-newest after retry/backpressure; guard_eid is required for a guard/fact pair and nullable otherwise; source_kind and source_event_id preserve source identity; t_publish is source_timestamp for Movement and terminal_publication_time for Burst; deadline = t_publish + T_hearing for hearing work; older queued work remains and rejected work creates no relay or decision
     - name: peer-recruit
-      fields: [entry_id, fact_id, source_guard, area_position, timestamp, target_guard, publisher]  # FSM corroboration decision: second same-area noise within t_noise_corroborate_window; target_guard may be none when no eligible peer exists; publisher = FSM-decision
+      fields: [session_id, attempt_epoch, entry_id, fact_id, source_guard, area_position, timestamp, target_guard, acknowledgement, arrival_deadline, publisher]  # Target-only FSM corroboration decision; eligibility/acknowledgement/arrival deadline are required once Alert Propagation exists
     - name: locked-zone
-      fields: [entry_id, fact_id, source_guard, area_position, timestamp, patrol_area_id, publisher]  # FSM corroboration decision: third same-area noise within the window; zone-wide suspect response, no duplicate investigate-commit; publisher = FSM-decision
+      fields: [session_id, attempt_epoch, entry_id, fact_id, source_guard, area_position, timestamp, patrol_area_id, expiry_timestamp, publisher]  # Target-only FSM corroboration decision; zone lifetime is explicit, no duplicate investigate-commit
     - name: Threshold crossing (confirm-window start)
       fields: [entry_id, R, threshold_state, timestamp, publisher]  # numeric R added in v2; publisher = sensing-fact
     - name: Confirm-window elapsed
       fields: [entry_id, R, threshold_state, timestamp, publisher]  # rev 3.2: window reached t_win with LOS — the sensing fact that IS the threshold-path commit trigger; publisher = sensing-fact
     - name: Escalation (investigate-commit, every path)
-      fields: [entry_id, R, cause, position, threshold_state, timestamp, hide_entry, publisher]  # rev 3.2: mandatory on every episode-OPENING path (rev 3.3, J1; tier-scoped rev 3.4 — the FSM publishes exactly one escalation decision per escalation tier, never a same-tier duplicate; an episode that commits Investigate and later reaches Chase additionally publishes its Chase-entry, both records in order); cause: threshold | noise | alert | cap-forced | hide-entry; R at commit read from a Perception-published R-bearing sensing fact at or just before commit (threshold paths: confirm-window-elapsed / chase-reached R; noise/alert paths: Perception's current-R readout piggybacked on the episode's sensing-fact preamble — rev 3.3 J3, no synchronous FSM->Perception query); entry_id relayed, never allocated; publisher = FSM-decision
+      fields: [session_id, attempt_epoch, entry_id, fact_id, R, residual_at_commit, evaluated_at, noise_anchor_position, cause, position, threshold_state, timestamp, hide_entry, publisher]  # R/residual/timestamp are carried in the sensing-fact preamble; the FSM never queries Perception synchronously; entry_id/fact_id are relayed, never allocated here
     - name: Cap-reached
       fields: [entry_id, counter, position, timestamp, publisher]  # rev 3.2: cancel counter hit n_cancel_cap — a sensing fact, never an escalation; the FSM commits cause=cap-forced on this fact; publisher = sensing-fact
     - name: Reachability
@@ -698,16 +1417,22 @@ trace_event_schema:
     - name: Chase-end
       fields: [entry_id, guard, timestamp, publisher]  # FSM publishes (R12); resumes R decay; Chase-tier Captures imply Chase-end (rev 3.2, scoped rev 3.9 CR-PERCEPTION-01) — witnessed Investigate-tier interior-inspection Captures publish Capture ALONE and exit the meter to Idle without a paired Chase-end
     - name: Investigate-resolution
-      fields: [entry_id, cause, position, timestamp, publisher]  # cause: fruitless | sight-committed | cap-forced | capture | redirected | abandoned (rev 3.2); fruitless -> F6 residual share (FSM publishes, Perception consumes)
+      fields: [session_id, attempt_epoch, entry_id, cause, position, timestamp, publisher]  # cause: fruitless | sight-committed | cap-forced | capture | redirected | abandoned; fruitless -> F6 residual share
     - name: Capture
       fields: [entry_id, position, victim, carve_out, timestamp, publisher]  # carve_out: any spot-verification capture (Chase-tier spot-front capture OR witnessed either-tier interior-inspection capture) consumes ONE Chase-COUNT escalation slot per spot-verification incident (concept line 120, amended CR-CONCEPT-01 completion rev 3.9; incident delimiter = episode-scoped, CR-CONCEPT-02 rev 3.10 — closes when its episode(s) resolve, later witnessed dive = new incident + own slot); a carve_out Capture at the Investigate tier publishes Capture ALONE — no Chase-entry/Chase-end (rev 3.9 CR-PERCEPTION-01); Grade-GDD TODO: consumption of the witnessed-entry counting rule lands with the Suspicion Meter / Grade GDD
     - name: Movement-state transition
       fields: [from_state, to_state, timestamp, publisher]  # Player Controller event; at most one per tick after snapshot rebuild; same-frame inputs carry only the net pair; publisher = Player Controller
     - name: step_event
-      fields: [state, position, stride_length_m, ledger_remainder_m, timestamp, publisher]  # Player Controller event; at most one per tick, actual XZ displacement only, remainder retained; consumed by Player Noise and audio; publisher = Player Controller
+      fields: [session_id, attempt_epoch, step_id, stride_target_state, state, previous_position, position, stride_length_m, ledger_remainder_m, timestamp, publisher]  # Player Controller event; stride_target_state is the latched radius source; at most one per tick; duplicate source identity is ignored; publisher = Player Controller
+    - name: Pickup interaction
+      fields: [session_id, attempt_epoch, interaction_id, pickup_id, trigger, reachable, distance_within_reach, clear_linecast, telemetry_event, telemetry_only, timestamp, publisher]  # LevelFixture evidence; pickup-reached is telemetry only and Interact owns the state change
+    - name: Pickup state transition
+      fields: [session_id, attempt_epoch, transition_id, interaction_id, pickup_id, from_state, to_state, spend_committed, fact_id, noise_published, timestamp, publisher]  # explicit Placed → Carried ownership record; pickup itself is silent
+    - name: Gate state transition
+      fields: [session_id, attempt_epoch, transition_id, gate_marker_id, owner, from_state, to_state, trigger_event, trigger_noise_kind, trigger_decision_id, causal_fact_id, landing_fact_id, step_id, causal_entry_id, timestamp, publisher]  # Level-owned typed transition; trigger_noise_kind ∈ {Movement, Burst} self-identifies the trigger stream and the responsible source id is landing_fact_id for Burst or step_id for Movement; causal identity must match the noise Investigate decision
     - name: HideSpot occupied
-      fields: [hide_spot_id, interior_position, timestamp, publisher]  # player-movement-hide #5 (rev 2026-08-26): posts on capsule entry to an Empty spot, exactly one per continuous occupancy (no duplicate/re-fire); consumed by Perception R4 (LOS-invisibility) + FSM hide-dive detection (CR-FSM-01b); publisher = HideSpot
+      fields: [session_id, attempt_epoch, hide_spot_id, interior_position, entry_id, occupied, timestamp, publisher]  # player-movement-hide #5 (rev 2026-08-30): posts on capsule entry to an Empty spot, exactly one per continuous occupancy (no duplicate/re-fire); consumed by Perception R4 (LOS-invisibility) + FSM hide-dive detection (CR-FSM-01b); publisher = HideSpot; occupied=true is authoritative and entry_id is the active witnessed episode when one exists
     - name: HideSpot empty
-      fields: [hide_spot_id, interior_position, timestamp, publisher]  # player-movement-hide #5 (rev 2026-08-26): posts synchronously on capsule exit, BEFORE any FSM tick consumes the current-tick fact set (D3 — the relocation-window escape / no-false-capture ordering); the ONLY writer of spot state Empty (player-occupancy-authoritative); publisher = HideSpot
+      fields: [session_id, attempt_epoch, hide_spot_id, interior_position, entry_id, occupied, timestamp, publisher]  # player-movement-hide #5 (rev 2026-08-30): posts synchronously on capsule exit, BEFORE any FSM tick consumes the current-tick fact set (D3 — the relocation-window escape / no-false-capture ordering); the ONLY writer of spot state Empty (player-occupancy-authoritative); publisher = HideSpot; occupied=false never permits Capture
     - name: Trace markers (behavioral, non-decision)
       fields: [marker_name, entry_id, timestamp, publisher]  # trace-only FSM behavioral markers — NOT decisions: never touch tier-scoped suppression or grading; Telemetry-visible only (rev 3.9 CR-PERCEPTION-01 registration). Known markers: postchase-sweep (rev 3.5, post-Chase LKP sweep beat); suppressed-hide-fallback (rev 3.9 C1.0 — emitted when ranks 1-3 win over the rank-4 sub-threshold hide-entry fallback, making the bounded supersession cell triageable in playtest)

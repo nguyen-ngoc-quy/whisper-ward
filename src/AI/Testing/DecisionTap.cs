@@ -12,24 +12,76 @@ namespace WhisperWard.AI.Testing
     public class DecisionTap : MonoBehaviour
     {
         private readonly List<DecisionRecord> _capturedRecords = new List<DecisionRecord>();
+        private IEventBus _eventBus;
+        private SubscriptionToken _decisionToken;
+        private bool _isBound;
+
+        /// <summary>
+        /// Injects the session-scoped bus used by this test adapter.
+        /// </summary>
+        public void Configure(IEventBus eventBus)
+        {
+            eventBus = eventBus ?? throw new System.ArgumentNullException(nameof(eventBus));
+            bool wasBound = _isBound;
+            if (wasBound) UnbindRuntime();
+            _eventBus = eventBus;
+            if (wasBound) BindRuntime(_eventBus);
+        }
+
+        private void OnEnable()
+        {
+            BindRuntime(_eventBus ?? EventBus.Default);
+        }
 
         private void Start()
         {
-            // Subscribe to all decision records
-            EventBus.Subscribe<DecisionRecord>(OnDecisionRecord);
+            BindRuntime(_eventBus ?? EventBus.Default);
+        }
+
+        private void OnDisable()
+        {
+            UnbindRuntime();
+        }
+
+        private void OnDestroy()
+        {
+            UnbindRuntime();
+        }
+
+        private void BindRuntime(IEventBus eventBus)
+        {
+            if (_isBound || eventBus == null) return;
+            _eventBus = eventBus;
+            _decisionToken = _eventBus.Subscribe<DecisionRecord>(OnDecisionRecord);
+            _isBound = true;
+        }
+
+        private void UnbindRuntime()
+        {
+            if (!_isBound) return;
+            if (_eventBus != null)
+                _eventBus.Unsubscribe(_decisionToken);
+            _isBound = false;
         }
 
         private void OnDecisionRecord(DecisionRecord record)
         {
+            if (record == null) return;
             _capturedRecords.Add(record);
-            Debug.Log($"[DecisionTap] Captured: {record.GetType().Name} at tick {record.Timestamp / 0.5f}");
+            Debug.Log($"[DecisionTap] Captured: {record.GetType().Name} at {record.Timestamp:0.###}s");
         }
 
+        /// <summary>
+        /// Returns a snapshot of captured records.
+        /// </summary>
         public List<DecisionRecord> GetRecords()
         {
             return new List<DecisionRecord>(_capturedRecords);
         }
 
+        /// <summary>
+        /// Clears all captured records.
+        /// </summary>
         public void Clear()
         {
             _capturedRecords.Clear();
@@ -40,6 +92,7 @@ namespace WhisperWard.AI.Testing
         /// </summary>
         public bool VerifyExactSequence(params System.Type[] expectedTypes)
         {
+            if (expectedTypes == null) return false;
             if (_capturedRecords.Count != expectedTypes.Length)
             {
                 Debug.LogError($"[DecisionTap] Count mismatch: expected {expectedTypes.Length}, got {_capturedRecords.Count}");
@@ -63,6 +116,7 @@ namespace WhisperWard.AI.Testing
         /// </summary>
         public bool VerifyLastRecord<T>(System.Action<T> assertions) where T : DecisionRecord
         {
+            if (assertions == null) return false;
             for (int i = _capturedRecords.Count - 1; i >= 0; i--)
             {
                 if (_capturedRecords[i] is T record)

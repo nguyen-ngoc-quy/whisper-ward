@@ -10,27 +10,30 @@ namespace WhisperWard.AI.Navigation
     [RequireComponent(typeof(NavMeshAgent))]
     public class GuardNavigator : MonoBehaviour
     {
-        private NavMeshAgent _agent;
+        [Header("Navigation Configuration")]
+        [SerializeField] private float patrolSpeed = 2.3f;
+        [SerializeField] private float investigateSpeed = 5.0f;
+        [SerializeField] private float chaseSpeed = 7.50f;
+        [SerializeField] private float stoppingDistance;
 
-        // Pinned speeds from design/registry/entities.yaml
-        private const float V_PATROL = 2.3f;
-        private const float V_INVESTIGATE = 5.0f;
-        private const float V_CHASE = 7.50f;
+        private NavMeshAgent _agent;
 
         private void Awake()
         {
             _agent = GetComponent<NavMeshAgent>();
-            _agent.stoppingDistance = 0.1f; // Based on stopping_distance = 0 in registry
+            _agent.stoppingDistance = stoppingDistance;
         }
 
         public void SetSpeed(float speed)
         {
+            if (speed < 0f || float.IsNaN(speed) || float.IsInfinity(speed))
+                return;
             _agent.speed = speed;
         }
 
-        public void SetPatrolSpeed() => SetSpeed(V_PATROL);
-        public void SetInvestigateSpeed() => SetSpeed(V_INVESTIGATE);
-        public void SetChaseSpeed() => SetSpeed(V_CHASE);
+        public void SetPatrolSpeed() { SetSpeed(patrolSpeed); }
+        public void SetInvestigateSpeed() { SetSpeed(investigateSpeed); }
+        public void SetChaseSpeed() { SetSpeed(chaseSpeed); }
 
         public void MoveTo(Vector3 destination)
         {
@@ -54,7 +57,11 @@ namespace WhisperWard.AI.Navigation
 
         public float GetPathDistance(NavMeshPath path)
         {
-            return path.GetLength();
+            if (path == null || path.corners == null) return 0f;
+            float length = 0f;
+            for (int i = 0; i < path.corners.Length - 1; i++)
+                length += Vector3.Distance(path.corners[i], path.corners[i + 1]);
+            return length;
         }
 
         public Vector3 GetLastKnownPosition() => _agent.destination;

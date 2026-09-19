@@ -20,9 +20,9 @@ namespace WhisperWard.AI.FSM
             // Base implementation handles generic event routing if needed
         }
 
-        protected void PublishDecision(DecisionRecord record)
+        protected void PublishDecision(GuardFSM fsm, DecisionRecord record)
         {
-            EventBus.Publish(record);
+            fsm?.PublishDecision(record);
         }
     }
 }
