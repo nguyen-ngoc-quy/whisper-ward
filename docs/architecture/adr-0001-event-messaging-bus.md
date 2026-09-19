@@ -37,7 +37,9 @@ its `Unsubscribe` method was not implemented, delivery was immediate, and it had
 no contract for `fact_id` deduplication, `attempt_epoch` invalidation, retry
 handling, or deterministic ordering. The current source contains a provisional
 `SessionEventBus` adapter for those seams, but the ADR remains Proposed and its
-transactional Perception handoff is not yet implemented or tested.
+transactional Perception handoff is now represented by the typed `AcceptNoise`/retry
+contract below; current runtime and test evidence remains bounded to the available
+source/fixture verification.
 
 ### Constraints
 
@@ -58,8 +60,9 @@ transactional Perception handoff is not yet implemented or tested.
 - Deduplicate typed HideSpot occupancy transitions by
   `(session_id, attempt_epoch, hide_spot_id, transition_id)` while keeping occupied and
   empty as separate event types.
-- Preserve per-publisher order; for equal source timestamps, preserve the publisher's
-  monotonic fact/transition order.
+- Preserve the canonical source tuple for sensing events: `(source_timestamp,
+  source_event_class_rank, source_event_id, fact_id)`; `fact_id` is the final tie-break
+  once allocated, and listener/publisher arrival order is never substituted.
 - Atomically invalidate older queued facts and occupancy transitions at an epoch
   transition.
 - Support reliable subscription and unsubscription across Unity component lifecycles.
@@ -82,11 +85,11 @@ registry.
 
 **Implementation status (not acceptance):** `SessionEventBus` currently supplies a
 bounded queued service, typed token subscriptions, phase-tagged events, ingress and
-listener deduplication, and explicit session/epoch clearing. It does not yet provide
-the transactional `Perception.AcceptNoise(envelope)` handoff or retained
-`handoff_pending` obligations specified below, and no Unity Test Framework execution
-has verified the adapter. The static `EventBus` facade is compatibility-only and is
-not an additional authoritative runtime path.
+listener deduplication, explicit session/epoch clearing, and the retained
+`handoff_pending`/typed handoff state used by the Perception boundary. The source
+contract is implemented, but this ADR does not claim Unity runtime, PhysicsScene,
+platform, or target-hardware evidence; the static `EventBus` facade is
+compatibility-only and is not an additional authoritative runtime path.
 
 Publishers submit immutable events to the bus ingress. The bus validates the envelope,
 records publisher order, and queues accepted events for dispatch at the owning

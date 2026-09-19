@@ -24,12 +24,13 @@ remains pending until real Unity and target-WebGL measurements exist.
 
 ## Registered Workload Profiles
 
-The fixture and audit distinguish the supported MVP envelope from stress coverage.
-The stress profile is deliberately bounded by the registered pair cap: 30 guards × 8
-facts produces 240 candidate pairs, but only 30 pairs and 30 Linecasts may be
-selected/evaluated in one boundary; the remainder is ordered deferred work or an
-explicit terminal diagnostic. This is stress coverage, not an unlimited support
-promise.
+The fixture and audit distinguish the supported MVP envelope from Target-tier
+stress coverage. MVP is locked to one guard and one-guard compositions must not
+silently execute Target behavior. The Target stress profile is deliberately bounded
+by the registered pair cap: 30 guards × 8 facts produces 240 candidate pairs, but
+only 30 pairs and 30 Linecasts may be selected/evaluated in one boundary; the
+remainder is ordered deferred work or an explicit terminal diagnostic. This is
+stress coverage, not an unlimited support promise.
 
 | Profile | Active guards | Due facts | Candidate pairs | Evaluated pairs / Linecasts | Burst flights | Evidence requirement |
 |---|---:|---:|---:|---:|---:|---|
@@ -412,6 +413,33 @@ this contract. `estimated`, `pending`, `unsupported`, missing, `UNCAPTURED`, and
 this audit does not approve Wwise or any other middleware and does not define a
 DSP-to-virtual-clock mapping. These targets are pending audio capture and do not
 make DSP callbacks gameplay authority.
+
+### Revision closure: ownership and calibration requirements
+
+The OQ3 adapter must provide an explicit calibration transaction for `epoch_offset`:
+`calibration_id`, `session_id`, `attempt_epoch`, `audio_clock_source`, `sample_rate`,
+`dsp_reference_sample`, `virtual_reference_time`, and finite `epoch_offset`, with a
+validity interval and invalidation on session/epoch change. No zero/default offset is
+accepted. A confirmed onset is valid only when its voice instance and sample provenance
+resolve to that calibration record.
+
+Cue ownership is the tuple `{semantic_trigger_owner, cue_request_owner,
+presentation_owner, evidence_owner, cancellation_owner}`. For Player Noise the FSM
+owns semantic outcomes and cancellation, the audio adapter owns cue requests and DSP
+evidence, and the presentation sink owns rendering only. A retry or duplicate must
+not create another voice instance. The body/accent pair is one logical cue with two
+role-typed voices; its logical onset is confirmed only after both applicable child
+records have complete provenance. `limiter_reported` is the only passing applicable
+limiter state; `limiter_unsupported` is explicit non-passing evidence.
+
+The suppression micro-tell rate-limit anchor is the authoritative `noise-suppressed-
+micro-tell` receipt's `t_publish` in the active virtual session, not wall-clock time or
+presentation callback time. A receipt may request one tell only after the FSM's single
+eligible visibility query; presentation never performs a query. The supported-MVP
+performance invariant is joint: the whole-frame WebGL p95 gate, the registered queue
+capacities, the frame-delta clamp, deferred-boundary cap, one-SyncTransforms-per-
+Burst-batch rule, and independent stall magnitude/rate limits must all be captured in
+one provenance-complete run. A subsystem diagnostic cannot substitute for that run.
 
 The stable cue identity for this boundary is at least
 `(session_id, attempt_epoch, source_event_id or fact_id, audio_cue_id)`. Cancel,

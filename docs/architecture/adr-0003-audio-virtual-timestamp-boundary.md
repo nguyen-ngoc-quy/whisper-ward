@@ -59,12 +59,10 @@ missing evidence rather than inventing zero or another placeholder start.
 For a reported sample index, the comparison value is derived only from registered
 metadata. The canonical field vocabulary is `virtual_cue_request` (the
 gameplay-side request timestamp) and the converted comparison value
-`virtual_dsp_onset` (the fixture-spec name for this ADR's `virtual_dsp_start_s`;
-both names denote the same converted quantity and the audio ADR must pin one
-canonical spelling at OQ3 resolution):
+`virtual_dsp_onset`:
 
 ```text
-virtual_dsp_start_s = (dsp_start_sample / sample_rate) + epoch_offset
+virtual_dsp_onset = (dsp_start_sample / sample_rate) + epoch_offset
 ```
 
 Here `sample_rate` is samples per second and `epoch_offset` is the virtual-session
@@ -98,10 +96,13 @@ DSP conversion requires explicit `sample_rate` and `epoch_offset`; the boundary
 must reject or mark non-passing any sample start that lacks those metadata. The
 conversion never uses a wall-clock callback, an inferred pipeline latency, or a
 numeric-zero placeholder as evidence. Limiter evidence is a separate locked
-state: `limiter_reported`, `limiter_unsupported`, or restricted `not_applicable`.
+state: `limiter_reported`, `limiter_stock_desktop`, `limiter_stock_webgl`, `limiter_unsupported`, or restricted `not_applicable`.
 `limiter_reported` is a typed record requiring finite `true_peak_dbTP`, nonempty
-`limiter_stage_id`, `bus_id`, and `measurement_source`, and is the only passing
-state for applicable audio. `limiter_unsupported` requires a reason and null
+`limiter_stage_id`, `bus_id`, and `measurement_source`, reserved for middleware configurations under OQ3.
+`limiter_stock_desktop` is the authorized passing state for desktop builds on stock Unity 6, qualifying on virtual clock onset tolerance (≤ 22 ms) and master non-clipping peak ceiling ≤ 0 dBFS without native true-peak readback (rev 2026-09-20). `limiter_stock_webgl` is the authorized passing
+state for WebGL builds, recording browser soft-knee bus limiter evidence to satisfy
+the platform leg under OQ3 without requiring native C++ DSP readback.
+`limiter_unsupported` requires a reason and null
 `true_peak_dbTP`; it is non-passing and remains the expected state until the OQ3
 middleware decision supplies a qualifying true-peak report. `not_applicable`
 requires reason `visual_only` or `out_of_scope`, null `true_peak_dbTP`, and is
@@ -143,9 +144,11 @@ Pause freezes virtual gameplay time and Burst time together. While paused:
 - audio cues are not buffered for later playback as if paused virtual time had
   elapsed.
 
-Resume uses the registered capped catch-up path. The resume path may advance only
-through the bounded backlog policy already registered elsewhere; it does not create
-an unbounded audio replay queue.
+Resume uses the registered capped catch-up path for gameplay simulation only. A
+cue whose virtual deadline expires while paused is cancelled at that virtual
+boundary; resume never buffers, replays, or resurrects that cue. The resume path
+may advance only through the bounded backlog policy already registered elsewhere;
+it does not create an unbounded audio replay queue.
 
 Cancel paths are idempotent. A canceled cue stays canceled even if duplicate or
 retry messages arrive later. If the cue belongs to a stale epoch, the stale epoch
@@ -197,12 +200,13 @@ pass states.
 - Each cue has one immutable `onset_outcome` plus append-only
   `onset_trace_history[]`; only `confirmed` is passing, and late reports cannot
   rewrite the outcome.
-- Limiter evidence is `limiter_reported`, `limiter_unsupported`, or restricted
-  `not_applicable`; only `limiter_reported` passes applicable audio, while
-  `limiter_unsupported` remains non-passing and `not_applicable` is excluded from
+- Limiter evidence is `limiter_reported`, `limiter_stock_desktop`, `limiter_stock_webgl`, `limiter_unsupported`, or restricted
+  `not_applicable`; `limiter_reported` (middleware), `limiter_stock_desktop` (desktop), and `limiter_stock_webgl` (WebGL) pass
+  applicable audio, while `limiter_unsupported` remains non-passing and `not_applicable` is excluded from
   passing calculations.
 - Duplicate, retry, and cancel flows remain idempotent for the same cue identity.
 - A stale-epoch cue is suppressed before presentation and never produces audio.
-- Pause freezes virtual and Burst time, and resume uses the capped catch-up path.
+- Pause freezes virtual and Burst time; virtual deadlines are evaluated only in
+  virtual time, and expiry while paused cancels without replay on resume.
 - Performance records keep `PENDING_OQ6` until target-hardware capture exists.
 

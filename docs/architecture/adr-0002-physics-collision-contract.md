@@ -210,6 +210,14 @@ and the contentful-scene validation all use this same handle; no caller may subs
 is resolved from the active/default gameplay scene, but the explicit dependency keeps
 scene identity stable and testable across runtime, preview, and fixture paths.
 
+A `PhysicsSceneContentProof` also carries evidence provenance:
+`CapturedRuntime` is the only passing production-runtime state; `Declared`,
+`SyntheticTest`, and `Unavailable` are retained for diagnostics or fixtures and
+must not be reported as captured scene evidence. The composition root fails closed
+when captured provenance is absent, even when the scene, mask, trigger policy, and
+caller-supplied collider count are structurally valid. No runtime capture claim is
+made by a declaration-only or synthetic proof.
+
 The authoritative swept query runs in that injected gameplay `PhysicsScene` after the
 single pre-batch synchronization and is a single-hit `Physics.SphereCast` using:
 

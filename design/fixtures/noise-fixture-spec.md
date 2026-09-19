@@ -2,7 +2,7 @@
 
 > **Status**: **Authoritative harness spec (2026-08-30; rev 2026-09-08 — Task 5
 > canonical fixture handoff, source/terminal identity, pickup/overlap, queue,
-> liveness, F4, AC19 evidence, and AC21 gate parity)** — referenced by every
+> liveness, F4, AC19a/b evidence, and AC21 gate parity)** — referenced by every
 > noise-domain fixture in `player-noise.md` acceptance criteria. Defines the
 > master conventions for `NoiseEmitterFixture`, `EventBusFixture`,
 > `PerceptionHearingFixture`, `BurstLifecycleFixture`, `ConfigValidatorFixture`,
@@ -29,13 +29,13 @@
 
 ## Overview
 
-The Player Noise GDD is a contract with **observable, deterministic, virtual-clock-bound** behavior. The acceptance criteria are spread across 11 executable fixtures governed by this one master specification, and each must agree on a small set of harness conventions: schema versions, virtual-clock injection, comparison tolerance, and trace field contracts. **`NoiseFixtureSpec` is the master specification** that pins those conventions so cross-fixture parity is testable and a failing fixture is always localizable.
+The Player Noise GDD is a contract with **observable, deterministic, virtual-clock-bound** behavior. The acceptance criteria are assigned to 11 normative fixture roles governed by this one master specification, and each role must agree on a small set of harness conventions: schema versions, virtual-clock injection, comparison tolerance, and trace field contracts. **`NoiseFixtureSpec` is the master specification** that pins those conventions so cross-fixture parity is testable and a failing implemented fixture is always localizable. The role count is not evidence that every role is implemented, loadable, executed, or runtime-captured.
 
 The spec also enumerates the **mandatory fixture set** for the MVP noise-domain test battery. Every acceptance criterion in `player-noise.md` and the cross-system criteria in `perception.md` / `guard-ai-fsm.md` that depends on a noise event must name the owning fixture. Cross-system criteria do not simulate cross-system behavior inline; they name the required fixture explicitly.
 
 ## Player Fantasy (Harness)
 
-A QA tester or CI runner should be able to run the noise-domain battery with one command, see all 11 fixtures execute in a defined order, and inspect a serialized record that is identical across runtime, preview, fixture, and replay. Failing assertions are localizable to one fixture, one criterion, and one expected/actual pair. There is no silent drop, no hidden runtime tolerance, no listener/thread arrival order dependence.
+A QA tester or CI runner should have one defined harness entry point for the noise-domain battery, with the 11 fixture roles listed in a deterministic order and a serialized record contract that is identical across runtime, preview, fixture, and replay. When a role is implemented and executed, failing assertions are localizable to one fixture, one criterion, and one expected/actual pair. The specification itself is not evidence of implementation, loadability, execution, or runtime capture; there is no silent drop, no hidden runtime tolerance, and no listener/thread arrival order dependence.
 
 ## Detailed Rules
 
@@ -48,14 +48,14 @@ A QA tester or CI runner should be able to run the noise-domain battery with one
 | 3 | `PerceptionHearingFixture` | Virtual clock, scheduler phase, due-boundary predicate, `relaySpy` capture; `relaySpy` preserves raw movement/Burst payload fields, source ordering keys, `evaluated_at`, `residual_at_hearing`, `publisher`, and `t_publish` | Yes (Perception ↔ FSM) | AC5, AC12-P, AC13, AC15-MVP, AC15-Target, AC15b-MVP saturation supplements |
 | 4 | `BurstLifecycleFixture` | Pickup ids, carried slot, checkpoint snapshot, segment reset, death, collision/timeout stimuli, persistent `ghostSpy`, and accepted-edge `cameraAzimuthSpy` | No (Player ↔ Burst) | AC6, AC6a, AC6b, AC7, AC8, AC9 (initial-overlap/contact legs), AC9b, AC15-MVP (death-during-flight leg) |
 | 5 | `ConfigValidatorFixture` | Config injection, load-report writer, stable failure codes | No | AC10, AC11, AC11b |
-| 6 | `AudioFeedbackFixture` | Gameplay commit time, DSP sample onset, cue identity, trigger/cancellation/presentation outcome, accessibility modes, visible micro-tell fields, internal proxy dedup | Yes (Audio ↔ FSM) | AC16, AC17, AC19 |
+| 6 | `AudioFeedbackFixture` | Gameplay commit time, DSP sample onset, cue identity, trigger/cancellation/presentation outcome, accessibility modes, visible micro-tell fields, internal proxy dedup | Yes (Audio ↔ FSM) | AC16, AC17, AC19a, AC19b |
 | 7 | `LevelFixture` | Canonical MVP room manifest, route/receiver/occlusion/throw/failed-spend evidence, authored ambiguity and NavMesh/E20 separation checks | No (Level) | AC9 (ambiguous-collision leg), AC20 |
 | 8 | `FsmFixture` (Approved FSM rev 4.1) | `exposeFsmStateSpy {guard_eid, state, entry_id, source}` plus append-only `noiseOutcomeSpy {guard_eid, fact_id, entry_id, outcome, suppression_reason, episode_anchor_kind, episode_anchor_identity, episode_anchor_position_xz, episode_anchor_t_publish, start_arm, reanchor_budget_s, timer_started_at, target_path_end_reached_at}` | Yes (FSM) | AC12, AC12-P, AC15b-MVP, AC15-Target, AC-FSM-EX (LivenessFact) |
 | 9 | `PerceptionFixture` (cross-system) | `exposeResidualSpy {guard_eid, R, dA_dt, residual_add, source}` | Yes (Perception F6) | AC18 (CR7 R_noise_share) |
 | 10 | `HideSpotFixture` (Target-tier only) | Authored `Occupied` spot, hunch/no-break probe | No | AC14-Target |
 | 11 | `PerformanceFixture` | Supported-MVP and diagnostic stress timing envelope | Yes (runtime slice) | AC21 |
 
-`NoiseFixtureSpec` itself is the **sole schema authority and master specification** for all 11 executable fixtures. The MVP run includes fixtures 1–9 and 11; `HideSpotFixture` is Target-tier only and is excluded from MVP runs while its Target-only ACs are recorded as out of scope. It is the source of truth for fixture names/count, `trace_contract`, serialized field lists, comparison tolerances, and virtual-clock injection; the Player Noise GDD only summarizes fixture ownership and acceptance coverage, and fixtures consult this file rather than redefining its schema.
+`NoiseFixtureSpec` itself is the **sole schema authority and master specification** for all 11 normative fixture roles. The MVP harness is specified to include roles 1–9 and 11; `HideSpotFixture` is Target-tier only and is excluded from MVP execution while its Target-only ACs are recorded as out of scope. This document is the source of truth for fixture role names/count, `trace_contract`, serialized field lists, comparison tolerances, and virtual-clock injection; it does not assert that the roles are implemented, loadable, executed, or runtime-captured. The Player Noise GDD only summarizes fixture ownership and acceptance coverage, and any implemented fixture consults this file rather than redefining its schema.
 
 ### Harness Conventions
 
@@ -83,7 +83,7 @@ typed record-specific object.
 | `fact_id` | `ulong` | NoiseEmitter transport/dedup token, allocated at accepted raw-fact publication |
 | `entry_id` | opaque `string` | Perception episode id, allocated at first eligible hearing admission |
 | `step_id` | `ulong` | Controller movement source identity |
-| `flight_handle_id` | `ulong` | Burst accepted-throw internal allocation identity, allocated at the accepted Throw edge; serialized source identity is `flight:<flight_handle_id>` |
+| `flight_handle_id` | `ulong` | Burst accepted-throw internal allocation identity, allocated at the accepted Throw edge; serialized source identity is `flight:<flight_handle_id>`; published route records also carry explicit `noise_published_fact_id` when a landing is audible |
 | `guard_eid` | `string` | Stable guard identity |
 | `epoch_transition_id` | `ulong` | Lifecycle/session owner; increments on epoch change |
 
@@ -128,10 +128,11 @@ replace `source_timestamp`, `terminal_publication_time`, or `t_publish`, and it 
 gameplay eligibility or ordering authority.
 
 **Burst terminal record:** `session_id`, `attempt_epoch`, `flight_handle_id`,
-`source_timestamp`, `terminal_publication_time`, `t_publish`, `terminal_cause ∈
-{Collision, Timeout, DeathCancelled}`, `burst_state_after ∈ {Landed, Consumed}`,
-`flight_elapsed_s`, `contact_fraction`, `contact_event_time`, `timeout_boundary_s`,
-`comparison_result`, `terminal_position`, `fact_publication_state ∈ {not_applicable, pending, published,
+`winning_tick_index`, `source_timestamp`, `terminal_publication_time`, `t_publish`,
+`terminal_cause ∈ {Collision, Timeout, DeathCancelled, BoundaryCancelled}`,
+`burst_state_after ∈ {Landed, Consumed}`, `flight_elapsed_s`, `contact_fraction`,
+`contact_event_time`, `timeout_boundary_s`, `comparison_result`, `terminal_position`,
+`resolved_velocity`, `fact_publication_state ∈ {not_applicable, pending, published,
 rejected, invalidated}`, nullable `fact_id`, `timestamp`, and `publisher`.
 `terminal_cause` records why the flight ended, while `burst_state_after` is the
 explicit resulting lifecycle state; neither is a substitute for
@@ -140,8 +141,10 @@ Timeout, `terminal_publication_time` is also the authoritative publication/deadl
 timestamp and a published terminal has `t_publish = terminal_publication_time`.
 For `DeathCancelled`, `terminal_publication_time` records cancellation time,
 `t_publish` is not applicable, and there is **no `NoisePublished` fact and no
-hearing deadline**. Contact fields are null for timeout/death cancellation as
-specified by the registry. Pending or non-published terminals use `fact_id = null`,
+hearing deadline**. `BoundaryCancelled` is a fail-closed diagnostic terminal for
+malformed contact data or simulation divergence; it records no publication time,
+`t_publish`, fact id, or hearing deadline. Contact fields are null for
+Timeout/DeathCancelled/BoundaryCancelled as specified by the registry. Pending or non-published terminals use `fact_id = null`,
 never numeric zero; a published terminal requires a nonzero fact id.
 
 **Accepted `ThrowSnapshot` record (`WW-THROW-1.0`):** the envelope carries
@@ -159,9 +162,9 @@ stance, or geometry. Rejected Throws have no `flight_handle_id`,
 `PickupReachRecord` with `pickup_id`, `pickup_reach_route_id`, `player_feet`,
 `pickup_anchor`, `pickup_reach_radius`, `distance_squared`, and the inclusive
 predicate `distance_squared(player_feet, pickup_anchor) <= pickup_reach_radius^2`,
-followed by an E20 `Linecast` from `player_feet + up * f12_noise_origin_offset`
+followed by an E20 `Linecast` from `player_feet + up * pickup_reach_origin_offset`
 to `pickup_anchor` in the injected `PhysicsScene` with the cached E20 World mask
-and `QueryTriggerInteraction.Ignore`. The record retains `e20_linecast`,
+and `QueryTriggerInteraction.Ignore` (where `pickup_reach_origin_offset = 1.2 m` is chest height, rev 2026-09-19; clearing 0.8 m table lips). The record retains `e20_linecast`,
 `reach_predicate`, `reachable`, `tolerance_class` when a position is compared,
 and `actual` separately. The LevelFixture `pickup_interactions` record uses the
 exact registry fields `interaction_id`, `pickup_id`, `reach_route_id`, `trigger`,
@@ -188,17 +191,26 @@ allocation. It records `initial_overlap`, `geometry_validation_result`,
 `no_runtime_launch=true`, `burst_state=Carried`,
 `flight_handle_id=null`, `throw_snapshot_id=null`, `fact_id=null`,
 `source_event_id=null`, and `actual` separately. It emits no flight, terminal,
-audio, or `NoisePublished`. This record is not a swept SphereCast terminal and is
-kept separate from wall, ceiling, void, timeout, and death-cancelled consumed-spend
-records.
+audio, or `NoisePublished`. The stable `rejection_code` is
+`INITIAL_OVERLAP_REJECTED` for a complete blocked query and
+`INITIAL_OVERLAP_QUERY_INCOMPLETE` for saturation, invalid enumeration, or any
+result that cannot prove completeness; a diagnostic subcode may explain the
+source of the failure but never replaces the stable family. This record is not
+a swept SphereCast terminal and is kept separate from wall, ceiling, void,
+timeout, and death-cancelled consumed-spend records.
 
 **F4 landing resolution record:** every positive throw records the authored
 `landing_surface_id` and `landing_surface_y_m`, with `h_landing_m` equal to that
-authored surface height for the F4 oracle. The separate
+authored surface height for the F4 oracle. Root selection enforces the dual-regime root oracle (rev 2026-09-19):
+selecting descending crossing `t_plus` for downward impacts (including $\Delta y \ge 0$ and elevated top surfaces)
+and ascending crossing `t_minus` for underside/ceiling impacts, with sub-tick rejection `t > ϵ_t = Δt_tick = 1/120 s ≈ 0.00833 s`
+(eliminating the flat-ground float rounding degeneracy where $t_- \approx +10^{-16} > 0$ would trigger an immediate
+zero-meter detonation; discriminants $D \le 0.01$ reject as near-tangencies). The separate
 `published_projectile_center` is the post-hit SphereCast result
 `collider_surface_contact + hit_normal * (projectile_radius + epsilon_contact)`;
 it is the landing/hearing position, not the F4 `h_landing` operand. Both results
-carry their declared `tolerance_class` (`pure_math_relative` for F4 arithmetic,
+carry their declared `tolerance_class` (`pure_math_relative ≤ 1×10⁻⁶` for AC6a analytical F4 arithmetic,
+`discrete_simulation_envelope` with `δ_sim = v0·cosθ·dt_max + 1e-3 ≈ 0.067 m` for AC6 discrete Euler simulation,
 `gameplay_contract` for gameplay placement, or `oracle_quantizer` for a static
 oracle comparison) and separate expected/actual evidence.
 
@@ -210,13 +222,15 @@ guard/fact pair and nullable otherwise), `source_kind`, `source_timestamp`,
 `rejection_code`, `timestamp`, and `publisher`. Deterministic ordering is
 asserted against the registered order contracts rather than by adding
 fixture-only fields: guard selection uses `[guard_eid]`, fact admission uses
-`[source_timestamp, source_event_class_rank, source_event_id, fact_id]`, and
-pair dispatch uses `[source_timestamp, source_event_class_rank, source_event_id,
+`[t_publish, source_event_class_rank, source_timestamp, source_event_id, fact_id]`, and
+pair dispatch uses `[t_publish, source_event_class_rank, source_timestamp, source_event_id,
 fact_id, guard_eid]`. `source_event_class_rank` remains part of the upstream
 source-order contract; `admission_order_key` is the validator's applicable tuple,
 not a serialized Queue rejection field. `stable_guard_snapshot_position` is
 recorded data and never a sort key. For hearing work, `deadline = t_publish +
-T_hearing`; a DeathCancelled source has no hearing deadline. Existing identities
+T_hearing` (extended to `t_publish + 2 · T_hearing = 0.4 s` when deferred under
+`max_hearing_pairs_per_boundary` to boundary $b_{n+1}$, with a strict maximum carry-forward of one boundary;
+rev 2026-09-19); a DeathCancelled source has no hearing deadline. Existing identities
 are deduplicated before retry/backpressure; only a new identity enters the
 deterministic policy of retry, admit, defer, then reject-newest after retry
 exhaustion. Older queued work is preserved, and a rejected item creates no relay,
@@ -225,9 +239,10 @@ decision, or passing evidence. A source-side rejection uses the typed record
 invalid_field_or_validation_reason, rejection_code, publisher, input_identity,
 expected, actual}`. `rejection_code` is one of `SOURCE_MALFORMED`,
 `SOURCE_DUPLICATE`, `SOURCE_OUT_OF_ORDER`, `SOURCE_WRONG_EPOCH`,
-`SOURCE_NONFINITE`, `SOURCE_ZERO_DISPLACEMENT`, or `SOURCE_NEGATIVE_DISPLACEMENT`;
-missing fields, missing expected/actual parity, or an uncaptured `actual` are
-non-passing.
+`SOURCE_NONFINITE`, or `SOURCE_ZERO_DISPLACEMENT`; a non-stationary movement
+sample is represented by the canonical movement validation reason rather than a
+negative-displacement source code. Missing fields, missing expected/actual parity,
+or an uncaptured `actual` are non-passing.
 
 **`LivenessFact` record:** `session_id`, `attempt_epoch`, `guard_eid`, opaque string
 `entry_id`, `tier ∈ {Investigate, Chase}`, `op ∈ {open, promote, close}`, `cause`,
@@ -246,11 +261,33 @@ open or close.
 
 **FSM semantic micro-tell record:** `suppressed-receipt` is serialized as
 `{session_id, attempt_epoch, guard_eid, fact_id, entry_id, suppression_reason,
-visible_to_player, micro_tell_emitted, timestamp, publisher=GuardAISystem}`.
-The FSM owns this semantic event and its single-consumption identity; VFX/audio
-only render the tell from the immutable receipt and never query behavior or infer a
-gameplay outcome. A relay suppressed by state, visibility, cooldown, area, or
-out-of-window rules remains a consumed FSM outcome, not an audio-only event.
+visible_to_player, visibility_query_id, visibility_query_provenance,
+micro_tell_emitted, source_kind, source_event_id, t_publish, timestamp,
+publisher=GuardAISystem}`. `suppression_reason` is one of
+`{cooldown, out-of-window, out-of-area, state-exclusion}`; visibility is query
+provenance, not a reason. The FSM owns this semantic event and its
+single-consumption identity; VFX/audio only render the tell from the immutable
+receipt and never query behavior or infer a gameplay outcome. A relay suppressed
+by state, cooldown, area, or out-of-window rules remains a consumed FSM outcome,
+not an audio-only event. An eligible non-Chase, non-`HideSpotFront` path records
+exactly one visibility query; state-excluded paths record a `state-exclusion`
+receipt with `visibility_query_id=not-applicable` and
+`visibility_query_provenance=not-performed:state-exclusion` (so no query is
+unambiguously distinct from queried-and-not-visible), while stale, epoch-invalid,
+and duplicate paths record no receipt.
+
+**FSM corroboration record:** `noise-reanchor` is serialized as
+`{session_id, attempt_epoch, guard_eid, entry_id, episode_anchor_kind,
+episode_anchor_identity, episode_anchor_position, episode_anchor_t_publish,
+episode_anchor_fact_id, corroborating_fact_id, origin, source_kind,
+source_event_id, t_publish, terminal_publication_time, residual_at_hearing,
+reanchor_extension_s, timestamp, publisher=GuardAISystem}`. It is emitted once
+per qualifying MVP corroboration, retains the existing `entry_id`, does not
+publish a second `investigate-commit`, and does not open liveness again.
+For `episode_anchor_kind=noise`, `episode_anchor_fact_id` is the original raw
+fact; for `hide-entry` and `cap-forced`, it is zero/null and
+`episode_anchor_identity` is the existing entry identity. The authored anchor
+position/time is never reconstructed from the corroborating relay.
 
 **Pickup/Gate record:** `pickup_id`, `flight_handle_id` when applicable,
 `throw_snapshot_id`, `landing_surface_id`, `gate_id`, transition result/code,
@@ -272,7 +309,7 @@ non-authoritative diagnostics but may not change identity types or ownership.
 | `oracle_quantizer` (expected-vs-computed static-oracle position/range records) | `≤ 1×10⁻³ m` absolute (1 mm) | `entities.yaml` `fixture_tolerance_classes`; NOT a gameplay tolerance |
 | `pure_math_relative` (F4/oracle formula, discriminant, root, and pure-math range checks) | `≤ 1×10⁻⁶` relative | `entities.yaml` `fixture_tolerance_classes`; never a gameplay tolerance |
 | Trace field identity | exact | Deterministic tuple |
-| Audio onset (AC19) | `audio_cue_onset_tolerance_ms = 22 ms` default (registered range `[10, 40]` ms; rev 2026-09-01, B5 — 20 ms sat below a 1024-sample/48 kHz mix quantum ≈ 21.3 ms) | Verified against injected virtual clock |
+| Audio onset (AC19b) | `audio_cue_onset_tolerance_ms = 22 ms` default for desktop, `45 ms` for WebGL (registered range `[10, 50]` ms; rev 2026-09-19 — accommodating up to 2048-sample blocks at 48 kHz ≈ 42.7 ms) | Verified against injected virtual clock |
 | AC21 acceptance gate (whole frame, rev 2026-08-31) | `webgl_whole_frame_budget_p95_ms = 33.0 ms` p95 at the WebGL 30 fps floor — whole-frame wall-clock | Asserted, not yet measured (OQ6); `PENDING_OQ6` is non-passing |
 | Hearing/Burst/Perception slice (AC21 decomposition record) | `≤ 2.0 ms` p95/p99 for `supported_mvp` (1 guard / 1 fact / 1 flight); `stress_30_guard_8_fact` is diagnostic only | Asserted, not yet measured (OQ6); not the whole-frame gate |
 | Aggregate WebGL subsystem slice (AC21 decomposition record) | `≤ 12.0 ms` p95/p99 — diagnostic decomposition, **NOT** the acceptance gate | Asserted, not yet measured (OQ6) |
@@ -286,15 +323,17 @@ The 5 mm gameplay tolerance is the **gate**: anything looser is a known limitati
 The Perception hearing queue admits in this exact order, shared by all fixtures:
 
 1. Selected guard set is the **`stable_guard_snapshot`** taken at the boundary's perception-tick start (NOT the active subscription), ordered by ascending `guard_eid` only; `stable_guard_snapshot_position` is recorded but never a sort key.
-2. Facts admitted to that snapshot are processed in `(source_timestamp, source_event_class_rank, source_event_id, fact_id)` order.
-3. Guard/fact pairs are processed in `(source_timestamp, source_event_class_rank, source_event_id, fact_id, guard_eid)` order.
+2. Facts admitted to that snapshot are processed in `(t_publish, source_event_class_rank, source_timestamp, source_event_id, fact_id)` order.
+3. Guard/fact pairs are processed in `(t_publish, source_event_class_rank, source_timestamp, source_event_id, fact_id, guard_eid)` order.
 
-Listener/thread arrival order, subscription churn mid-boundary, queue insertion order, and per-listener registry mutation are **NOT** identity sources. The order is `hearing_queue_admission_order` in `entities.yaml` and is read-only to fixtures.
+Listener/thread arrival order, subscription churn mid-boundary, queue insertion order, and per-listener registry mutation are **NOT** identity sources. The order is `hearing_queue_admission_order` in `entities.yaml` and is read-only to fixtures. Source IDs are validated before admission: `step:<suffix>` is Movement, `flight:<positive_decimal_handle>` is Burst; numeric suffixes have no leading zeroes, Burst suffixes are nonzero, and malformed or wrong-namespace IDs are rejected with a stable source-ID diagnostic. Opaque Movement suffixes are allowed only when they satisfy the character policy and remain within the `step:` namespace.
+
+MVP fixture records use a one-guard hearing cap and may assert only same-guard corroboration/re-anchor. `peer-recruit` and `locked-zone` are Target-only outcomes and require an explicit ready Alert Propagation capability; a missing capability is a failed composition, not an MVP fallback.
 
 The three component keys are asserted independently: guard selection
 `guard_eid` ascending (with `stable_guard_snapshot_position` recorded but non-ordering), fact admission
-`(source_timestamp, source_event_class_rank, source_event_id, fact_id)`, and pair
-dispatch `(source_timestamp, source_event_class_rank, source_event_id, fact_id,
+`(t_publish, source_event_class_rank, source_timestamp, source_event_id, fact_id)`, and pair
+dispatch `(t_publish, source_event_class_rank, source_timestamp, source_event_id, fact_id,
 guard_eid)`. The source-allocation key `(source_timestamp,
 source_event_class_rank, source_event_id)` is separate and is used only before
 `fact_id` exists. The same deterministic retry, deduplication, admission, deferral,
@@ -314,7 +353,7 @@ A runtime-config failure is never substituted by a level validation result, and 
 content failure is never substituted by a config result. Both validators fail
 closed on unknown fields and preserve `UNCAPTURED` evidence.
 
-#### AC19 onset report semantics (mandatory)
+#### AC19a / AC19b onset report semantics (mandatory)
 
 `AudioFeedbackFixture` records `audio_cue_id` and `audio_applicability` for every cue as
 `audible` or `visual_only`. `audio_cue_id` is allocated by Audio/UI at cue-request
@@ -350,12 +389,15 @@ limiter/true-peak result is recorded as an explicit evidence state:
 `limiter_reported` (the audio integration reports a true-peak limiter result
 within the registered `≤ −1 dBTP` bound and supplies finite `true_peak_dbTP`,
 nonempty `limiter_stage_id`, `bus_id`, and `measurement_source`),
-`limiter_unsupported` (the integration ships no true-peak limiter — stock Unity
+`limiter_stock_desktop` (desktop builds record stock Unity master non-clipping peak ceiling `≤ 0 dBFS` and virtual clock onset tolerance `≤ 22 ms`, satisfying the desktop platform leg under OQ3 without requiring native C++ DSP readback; rev 2026-09-20),
+`limiter_stock_webgl` (WebGL builds record stock audio browser soft-knee limiter evidence,
+satisfying the WebGL platform leg under OQ3 without requiring native C++ DSP readback; rev 2026-09-19),
+`limiter_unsupported` (the integration ships no true-peak limiter — stock Unity PC
 audio is the canonical case until the OQ3 middleware ADR lands; it carries a
 reason and null `true_peak_dbTP`), or `not_applicable` (the cue is visual-only or
 outside the registered limiter bus scope, carries reason `visual_only` or
 `out_of_scope`, and null `true_peak_dbTP`). A `visual_only` cue records `limiter_evidence=not_applicable` and is not
-evaluated by AC19. These are the only accepted values for their declared
+evaluated by AC19b. These are the only accepted values for their declared
 applicability; any other value is a schema error. The limiter evidence state is bound to the same
 `audio_cue_onset_tolerance_ms` record only when onset evidence is applicable.
 
@@ -385,12 +427,12 @@ AudioOnsetRecord {
 
 `voice_instance_id` and `dsp_start_sample` are nullable until an integration report
 exists; `onset_trace_history[]` is append-only; every audible cue, including Pickup
-Confirmation, is subject to the same AC19 onset gate. An audible cue may use
+Confirmation, is subject to the same AC19a/AC19b onset gate. An audible cue may use
 `limiter_evidence=not_applicable` only when its record explicitly declares that it is
 outside the registered limiter bus scope; `audio_applicability=audible` never permits
 `onset_evidence=not_applicable`. An `audible` cue's
 `limiter_evidence` is restricted to `limiter_reported`,
-`limiter_unsupported`, or `not_applicable`; an out-of-scope or `visual_only`
+`limiter_stock_desktop`, `limiter_stock_webgl`, `limiter_unsupported`, or `not_applicable`; an out-of-scope or `visual_only`
 cue uses `not_applicable`. The fixture must reject unknown outcome/limiter values and
 must not infer a passing result from `actual=UNCAPTURED`.
 
@@ -410,7 +452,7 @@ must not infer a passing result from `actual=UNCAPTURED`.
 
 `LevelFixture` (AC20) asserts these manifest contracts in addition to the
 per-record schemas above; the canonical manifest is
-`design/levels/mvp-burst-route-fixture.md` (`WW-MVP-BURST-ROUTE-1.2`):
+`design/levels/mvp-burst-route-fixture.md` (`WW-MVP-BURST-ROUTE-1.3`):
 
 - **Gate trigger binding:** every gate-open trigger record binds the raw fact's
   canonical lowercase `kind` — the certified route gate requires `kind = burst`
@@ -451,11 +493,20 @@ per-record schemas above; the canonical manifest is
 
 **AC20 route and validation record shapes (mandatory):** The route fixture uses
 registry field names without aliases. A `RouteEvidenceRecord` carries
-`route_id`, `from_marker`, `to_marker`, `obstruction_ids`,
+`route_id`, `geometry_binding_id`, `geometry_overlay_ids`,
+`route_safety_predicate_id`, `from_marker`, `to_marker`, `obstruction_ids`,
 `player_agent_radius_m`, `navmesh_area_mask`, `expected_path_status`,
 `path_complete`, `path_samples`, `stable_path_hash`, `tolerance_class`, `pickup_reach`,
 `e20_linecast`, `gate_state`, `failed_gate_spend`, `required_failed_cases`, and
-`actual`. A `ValidThrowVolumeRecord` carries
+`actual`. A `RouteSafetyPredicateRecord` carries `predicate_id`, `route_id`,
+`geometry_binding_id`, `geometry_overlay_ids`, `forbidden_gate_corridor`,
+`extended_search_zone_ids`, `swept_player_disc_radius_m`, `boundary_semantics`,
+`boundary_tolerance_m`, `sampling_rule`, `intersection_rule`,
+`expected_no_reentry`, and `actual`. A `SignalAObservationPocketRecord` carries
+`pocket_id`, `cover_solid_id`, `geometry_variant_id`, `pocket_bounds_min`,
+`pocket_bounds_max`, `entry_route_id`, `exit_route_id`,
+`player_clearance_predicate`, `containment_predicate`, and `actual`. A
+`ValidThrowVolumeRecord` carries
 `volume_id`, `geometry_variant_id`, `launch_position_ws`, `launch_direction_xz`,
 `open_volume_bounds`, `landing_surface_id`, `landing_surface_y_m`,
 `landing_contact_mode`, `target_marker_id`, `route_id`, `route_role`,
@@ -487,23 +538,26 @@ enumeration) or the proven-overlap `INITIAL_OVERLAP_REJECTED` no-spend/no-launch
 case; neither is a consumed-spend terminal.
 
 **AC20 route-causality record (mandatory):** The LevelFixture serializes one
-`route_causality` record with exactly the identity chain fields
+`route_causality` record with the registry field contract:
 `causality_id`, `pickup_marker_id`, `pickup_reach_route_id`,
 `pickup_interaction_id`, `pickup_state_transition_id`, `causal_volume_id`,
 `causal_geometry_variant_id`, `causal_landing_surface_id`,
 `accepted_throw_source_event_id`, `throw_snapshot_id`, `throw_snapshot_parity`,
-`flight_handle_id`, `landing_contact_probe_id`, `landing_surface_id`,
-`landing_fact_id`,
-`receiver_probe_id`, `hearing_relay_fact_id`, `entry_id`,
-`investigate_commit_id`, `gate_transition_id`, `gate_entry_marker_id`,
+`resolved_velocity`, `flight_handle_id`, `source_timestamp`,
+`terminal_publication_time`, `t_publish`, `terminal_cause`,
+`fact_publication_state`, `landing_contact_probe_id`, `landing_surface_id`,
+`landing_fact_id`, `noise_published_fact_id`, `receiver_probe_id`,
+`hearing_relay_fact_id`, `entry_id`, `investigate_commit_id`,
+`fsm_relay_outcome`, `gate_transition_id`, `gate_entry_marker_id`,
 `expected_gate_entry_transition`, `gate_exit_marker_id`,
 `gate_exit_reach_route_id`, `expected_gate_exit_reachable`, `route_evidence_id`,
-`expected_order`, `liveness_continuity`, and `actual`, matching the registry field
-contract. The causal binding fields identify the single physical route volume,
-geometry variant, and landing surface; `liveness_continuity` is required even when
-its applicability is `investigate_to_chase_only`. The Burst source identity is the disjoint `flight:<flight_handle_id>` namespace and
-is never reconstructed from a movement `step_id`; every downstream identity is
-propagated from the captured upstream record.
+`expected_order`, `liveness_continuity`, and `actual`. The causal binding fields
+identify the single physical route volume, geometry variant, and landing surface;
+`liveness_continuity` is required even when its applicability is
+`investigate_to_chase_only`. The Burst source identity is the disjoint
+`flight:<flight_handle_id>` namespace and is never reconstructed from a movement
+`step_id`; every downstream identity is propagated from the captured upstream
+record.
 
 A `GateTransitionRecord` carries
 `transition_id`, `gate_marker_id`, `owner`, `from_state`, `to_state`,
@@ -531,8 +585,10 @@ never satisfies the expected chain.
 `profile_id`, `purpose`, `active_guards`, `due_facts`,
 `evaluated_guard_fact_pairs`, `total_candidate_pairs`, `expected_linecast_count`,
 `expected_deferred_pairs`, `burst_flights`, `due_hearing_boundaries`,
-`required_budget_ms`, `budget_role`, `platform_scope`, `cap_controls`, and `actual`, matching the registry
-`workload_profiles` contract. Each profile also declares `budget_role` (`acceptance_gate` or
+`required_budget_ms`, `budget_evidence`, `budget_role`, `platform_scope`, `cap_controls`, and `actual`, matching the registry
+`workload_profiles` contract. `required_budget_ms` is the normative threshold only;
+`budget_evidence` is the measured union `{status: PENDING_OQ6, value_ms: null} |
+{status: CAPTURED, value_ms: finite}` and never reuses the threshold field. Each profile also declares `budget_role` (`acceptance_gate` or
 `diagnostic_only`) and `platform_scope` (`[WebGL]` for the current millisecond gate;
 `[PC, WebGL]` for functional/replay execution). The complete performance sample record additionally
 carries target/build/engine/scene/fixture/schema/config identity, warm-up count,
@@ -552,10 +608,13 @@ must pass their independent magnitude/rate legs; any unlabeled frame above the
 nominal frame interval is classified `spontaneous_hitch` with stable
 `UNKNOWN_HITCH_SOURCE`, retained in the hitch ledger, and excluded only with that
 explicit reason; its presence invalidates a passing run until classified and
-resolved. Timer components are disjoint:
+resolved. `component_timer_contract` is provenance-complete and carries
+`frame_time_source`, `hitch_window_clock_source`, `timer_resolution_s`,
+`render_frame_index_field`, and `reconciliation_policy`. Timer components are disjoint:
 each owner starts/stops only its named boundary, child timers are subtracted from
 the parent's raw interval before reconciliation, and an overlap or unexplained
-residual beyond timer resolution is `TIMER_BOUNDARY_INVALID`. The
+residual beyond timer resolution is the **PerformanceFixture-only** diagnostic
+`TIMER_BOUNDARY_INVALID`, not a LevelFixture result code. The
 `supported_mvp` record uses the whole-frame `webgl_whole_frame_budget_p95_ms =
 33.0 ms` p95 gate; hearing/Burst/Perception `≤ 2.0 ms` and aggregate `≤ 12.0 ms`
 are decomposition diagnostics. `stress_30_guard_8_fact` is diagnostic-only and
@@ -572,8 +631,38 @@ never satisfy AC21. All AC21 budget fields use the typed union
 `PENDING_OQ6` is never a scalar measurement or a pass value. The WebGL record is the
 only current millisecond acceptance gate. PC remains the primary development target
 and must run the same functional/replay checks, but has no separate millisecond pass
-threshold until a PC hardware profile is registered. An `actual=UNCAPTURED` profile
-is also non-passing.
+
+#### Cross-record conformance supplements (rev 2026-09-09)
+
+The following fields are mandatory wherever the corresponding record exists; earlier
+short forms are expanded by this rule:
+
+- `BurstTerminalRecord` carries `winning_tick_index` (the winning inclusive tick),
+  `terminal_cause`, `source_timestamp`, `terminal_publication_time`, `t_publish`,
+  `resolved_velocity`, and `fact_publication_state`. A post-timeout contact cannot
+  populate a Contact terminal or a contact publication time.
+- `ghostSpy` is a serializable append-only record list with fields
+  `{flight_handle_id, session_id, attempt_epoch, tick_index, position, velocity,
+  state, cancellation_reason, actual}`. `cameraAzimuthSpy` is a serializable input
+  list with `{sample_id, session_id, attempt_epoch, input_edge_time,
+  camera_azimuth_deg, forward_xz, accepted, rejection_code, actual}`. These spies
+  are diagnostic inputs/observations only and cannot create authoritative identity.
+- `route_causality` propagates the source tuple and terminal tuple without
+  recomputation: `source_event_id`, `source_kind`, `source_timestamp`,
+  `terminal_publication_time`, `t_publish`, `resolved_velocity`, `terminal_cause`,
+  and `fact_publication_state`, followed by the captured landing, relay, episode,
+  and gate identities. Missing fields fail closed.
+- Target-only fields use the evidence union
+  `{status: out_of_scope, reason: string} | {status: not_applicable, reason: string}
+  | {status: UNCAPTURED} | {status: CAPTURED, observed: typed_value}`. None of
+  these statuses is a passing runtime observation; `CAPTURED` is passing only after
+  the owning target contract's checks succeed.
+- AC21 provenance is complete only when target platform, browser, GPU, build id,
+  Unity version, fixture/schema/config identity, warm-up, repetitions, exclusions,
+  percentile method, and sample counts are present. A missing provenance field
+  produces `ACTUAL_CAPTURE_UNAVAILABLE`, not an inferred measurement. A PC profile
+  has no independent millisecond acceptance threshold until a PC hardware profile is
+  registered. An `actual=UNCAPTURED` profile is also non-passing.
 
 ### Schema Versions
 
@@ -582,7 +671,7 @@ is also non-passing.
 | `NoisePublished` envelope | `WW-NOISE-1.1` (source_event_class_rank added 2026-08-30; fact_publication_state added 2026-09-01) | `NoiseEmitterFixture`, `EventBusFixture` |
 | `NoiseHeardRelay` envelope | `WW-NOISE-RELAY-1.0` (guard_eid canonical identity confirmed 2026-09-01) | `PerceptionHearingFixture` |
 | `ThrowSnapshot` | `WW-THROW-1.0` | `BurstLifecycleFixture` |
-| `LevelFixture` manifest | `WW-MVP-BURST-ROUTE-1.2` | `LevelFixture` |
+| `LevelFixture` manifest | `WW-MVP-BURST-ROUTE-1.3` | `LevelFixture` |
 | `LivenessFact` | `WW-LIVENESS-1.0` (added 2026-08-30; source_timestamp/evaluated_at registered 2026-09-01) | `FsmFixture` |
 | `trace_event_schema` | `WW-TRACE-1.0` | All fixtures |
 | `PerformanceFixture` record | `WW-PERF-1.0` | `PerformanceFixture` / AC21 |
@@ -596,7 +685,7 @@ Runtime, preview, fixture, and replay must agree on the **same** simulator, the 
 ## Formulas
 
 - **Per-record identity projection:** Let `I = (session_id, attempt_epoch, source_timestamp, source_event_class_rank, source_event_id, fact_id, entry_id, guard_eid, consumption, publisher, evaluated_at)` be the canonical identity fields. Each record serializes only `Π_record(I)`, the subset declared and present in that record's schema; omitted fields are not synthesized or backfilled from another record. Raw records must not synthesize `entry_id`, `guard_eid`, or `consumption`.
-- **Tolerance-class comparison:** `gameplay_contract` uses `|a - b| ≤ CompareTolerance = 5×10⁻³ m` for `Vector3` position and XZ-distance; `oracle_quantizer` uses `≤ 1×10⁻³ m` absolute for expected-vs-computed static-oracle records; `pure_math_relative` uses `≤ 1×10⁻⁶` relative for formula, discriminant, root, and pure-math range checks. Pure-math checks never use or describe a `1×10⁻³ m` tolerance.
+- **Tolerance-class comparison:** `gameplay_contract` uses `|a - b| ≤ CompareTolerance = 5×10⁻³ m` for `Vector3` position and XZ-distance; `oracle_quantizer` uses `≤ 1×10⁻³ m` absolute for expected-vs-computed static-oracle records; `pure_math_relative` uses `≤ 1×10⁻⁶` relative for AC6a analytical formula, discriminant, root, and pure-math range checks; discrete simulation in AC6 compares against discrete Euler simulation reference traces within the physical step envelope `δ_sim = v0·cosθ·dt_max + 1e-3 ≈ 0.067 m` (rev 2026-09-19). Pure-math checks never use or describe a `1×10⁻³ m` tolerance.
 - **Audio onset window:** convert the absolute sample index as `virtual_dsp_onset = (dsp_start_sample / sample_rate) + epoch_offset`, then assert `|virtual_dsp_onset - virtual_cue_request| ≤ audio_cue_onset_tolerance_ms × T_to_s`, where `T_to_s = 1/1000` seconds per millisecond. Missing/non-finite conversion metadata is non-passing. Verified against the injected virtual clock; wall-clock drift is irrelevant.
 - **AC21 budget:** the acceptance gate is the **whole frame** — `webgl_whole_frame_budget_p95_ms = 33.0 ms` p95 at the WebGL 30 fps floor; the hearing/Burst/Perception slice (`hearing_burst_perception_budget_ms ≤ 2.0` p95/p99) and the subsystem aggregate (`aggregate_webgl_frame_budget_ms ≤ 12.0` p95/p99) are decomposition records inside that gate, not standalone acceptance. Each profile declares `budget_role` and `platform_scope`; diagnostic stress has no required budget. Budget evidence is the typed union `budget_evidence={status: PENDING_OQ6, value_ms: null} | {status: CAPTURED, value_ms: finite}`. PC functional/replay checks remain required as the primary development target, but no PC millisecond pass threshold exists until a hardware profile is registered.
 
@@ -613,7 +702,7 @@ Runtime, preview, fixture, and replay must agree on the **same** simulator, the 
 | E-FX-7 | Pure-math oracle mismatch | Failure is recorded with the difference and quantizer; this is a fixture-oracle bug, not a gameplay bug. |
 | E-FX-8 | Render stall during test | `Physics.autoSyncTransforms` cost and Event Bus/audio main-thread cost are inside the measurement boundary. Stall magnitude/rate are reported separately; non-hitch frames alone contribute to the p95/p99 steady-state gate. |
 | E-FX-9 | Multiple Burst `flight_handle_id`s in one test | Each flight is independent; `flight_handle_id` is the per-flight internal allocation identity and serializes as `flight:<flight_handle_id>`; `fact_id` is allocated per landing. |
-| E-FX-10 | Burst contact at-or-before vs after 3.0 s timeout | `contact_event_time ≤ 3.0 s` ⇒ contact wins (incl. equality); later contact ⇒ timeout wins; no late `NoisePublished`. |
+| E-FX-10 | Burst contact at-or-before vs after 3.0 s timeout | `winning_tick_index ≤ timeout_tick` ⇒ Collision wins, including equality at `timeout_tick=360`; `winning_tick_index > timeout_tick` ⇒ Timeout wins. `contact_event_time`, `contact_fraction`, and `flight_elapsed_s` are diagnostic fields only and never adjudicate the winner; no late `NoisePublished`. |
 | E-FX-11 | Burst terminal publication is deferred or fails | Contact/timeout terminal is `pending` with `fact_id = null` before emitter flush, then `published` with nonzero `fact_id`, or explicitly `rejected`/`invalidated`; cancellation is `not_applicable`; no state uses numeric zero as a fact identity. |
 
 ## Dependencies
@@ -635,7 +724,7 @@ Runtime, preview, fixture, and replay must agree on the **same** simulator, the 
 |------|-------|-------|-------|
 | `compare_tolerance_m` | `(1×10⁻³, 5×10⁻³]` m (default 5×10⁻³) | Player Noise GDD | Gameplay contract gate; pure-math quantizer is separate |
 | `oracle_quantizer_absolute_m` | `1×10⁻³` absolute | Player Noise GDD | Formula-oracle precision target; not a gameplay tolerance |
-| `audio_cue_onset_tolerance_ms` | `[10, 40]` ms (default 22 — rev 2026-09-01, B5: must be ≥ the platform audio mix quantum; a 1024-sample block at 48 kHz ≈ 21.3 ms) | Player Noise GDD | Virtual-clock bound; wall-clock irrelevant |
+| `audio_cue_onset_tolerance_ms` | `[10, 50]` ms (default 22 ms for desktop, 45 ms for WebGL — rev 2026-09-19: accommodating up to 2048-sample blocks at 48 kHz ≈ 42.7 ms) | Player Noise GDD | Virtual-clock bound; wall-clock irrelevant |
 | `hearing_burst_perception_budget_ms` | `[1.5, 3.0]` ms (default 2.0) | Player Noise GDD | Asserted, not yet measured (OQ6) |
 | `webgl_whole_frame_budget_p95_ms` | locked `33.0` ms (WebGL 30 fps floor, 1000/30) | Player Noise GDD | AC21 **acceptance gate** — whole-frame wall-clock p95; asserted, not yet measured (OQ6) |
 | `aggregate_webgl_frame_budget_ms` | locked `12.0` ms | Player Noise GDD | Subsystem-aggregate **decomposition record**, NOT an acceptance gate; asserted, not yet measured (OQ6) |
@@ -646,12 +735,12 @@ Runtime, preview, fixture, and replay must agree on the **same** simulator, the 
 
 | ID | Criterion |
 |----|-----------|
-| AC-FX-1 | All 11 fixtures (NoiseEmitter, EventBus, PerceptionHearing, BurstLifecycle, ConfigValidator, AudioFeedback, Level, Fsm, Perception cross-system, HideSpot Target-tier, PerformanceFixture) are registered, schema-versioned, and loadable from one harness entry point. |
+| AC-FX-1 | The harness specification represents all 11 normative fixture roles (NoiseEmitter, EventBus, PerceptionHearing, BurstLifecycle, ConfigValidator, AudioFeedback, Level, Fsm, Perception cross-system, HideSpot Target-tier, PerformanceFixture), assigns each a schema/version and one defined entry-point position, and reports implementation, loadability, execution, and runtime/platform capture separately. A role passes this criterion only for the evidence states explicitly captured for that role; specification-only, `UNCAPTURED`, `PENDING_OQ6`, unsupported, or missing evidence is non-passing and must not be reported as an executed fixture. |
 | AC-FX-2 | Every Player Noise GDD acceptance criterion names its owning fixture; cross-system criteria name the required fixture explicitly. |
 | AC-FX-3 | Every fixture records each emitted, enqueued, or consumed record's declared trace fields with expected values separate from actual evidence. Identity is a per-record partial projection of the canonical fields present in that schema; omitted fields are not synthesized or backfilled. Raw records, including `NoisePublished`, must not synthesize `entry_id`, `guard_eid`, or `consumption`; those fields appear only when owned and declared by downstream relay, pair, or outcome records. |
-| AC-FX-4 | Virtual-clock injection is used by every gameplay fixture; no fixture reads wall-clock time except the AC21 performance harness, which is the **sole** exception (AC19 audio-onset evidence is bound to the injected virtual clock — wall-clock drift is irrelevant). |
+| AC-FX-4 | Virtual-clock injection is used by every gameplay fixture; no fixture reads wall-clock time except the AC21 performance harness, which is the **sole** exception (AC19b audio-onset evidence is bound to the injected virtual clock — wall-clock drift is irrelevant). |
 | AC-FX-5 | CompareTolerance is `5×10⁻³ m` for gameplay contracts; oracle checks quantize to `1×10⁻³ m` absolute; the quantizer is NOT a gameplay tolerance. |
-| AC-FX-6 | Queue ordering is asserted as three independent keys: guard selection `guard_eid` ascending (with `stable_guard_snapshot_position` recorded but non-ordering), fact admission `(source_timestamp, source_event_class_rank, source_event_id, fact_id)`, and pair dispatch `(source_timestamp, source_event_class_rank, source_event_id, fact_id, guard_eid)`; the source-allocation key `(source_timestamp, source_event_class_rank, source_event_id)` is separate. Listener/thread arrival order is rejected as an identity source. |
+| AC-FX-6 | Queue ordering is asserted as three independent keys: guard selection `guard_eid` ascending (with `stable_guard_snapshot_position` recorded but non-ordering), fact admission `(t_publish, source_event_class_rank, source_timestamp, source_event_id, fact_id)`, and pair dispatch `(t_publish, source_event_class_rank, source_timestamp, source_event_id, fact_id, guard_eid)`; the source-allocation key `(source_timestamp, source_event_class_rank, source_event_id)` is separate. Listener/thread arrival order is rejected as an identity source. |
 | AC-FX-7 | Liveness closure matrix passes: every `op=open` has exactly one matching `op=close` keyed by `(session_id, attempt_epoch, guard_eid, entry_id)`; duplicate closes, mismatched keys, closes for rejected/disabled emitters, and closes across the wrong epoch fail; terminal and stale closes are both accepted only with their matching cause. The FSM is the sole writer, publishes `open/promote/close` before the next hearing drain, and Perception reads the latest published fact at that next boundary. A fact published after a drain is not applied retroactively; the fixture fails if a cross-boundary relay reserves a second `entry_id` before the opener is visible. |
 | AC-FX-8 | The AC21 budget is `PENDING_OQ6` until measured; `PENDING_OQ6` is not a passing evidence value. |
 | AC-FX-9 | Cross-fixture parity: runtime, preview, fixture, and replay agree on simulator, collision query, root selection, ordering, and queue admission; first differing field is recorded and the run fails closed. |
@@ -659,10 +748,22 @@ Runtime, preview, fixture, and replay must agree on the **same** simulator, the 
 
 ## Open Questions
 
-- **OQ-FX-1**: should `compare_tolerance_m` be split into a position gate and a distance gate (currently a single value)? Authoring thresholds (route waypoints, throw contact) are functionally distinct; a single value simplifies the harness but may mask per-class drift. Owner: qa-lead. Target: pre-fixture-implementation.
-- **OQ-FX-2**: should `LivenessFact` be its own Event Bus topic, or part of the existing `trace_event` topic? Cross-doc ownership currently says "FSM is the sole writer"; a dedicated topic would make stale-closure observable without polling the trace stream. Owner: technical-director + lead-programmer. Target: pre-fixture-implementation.
+No open harness questions are carried. The following decisions close the prior
+fixture questions and are normative for this specification:
 
-No other harness questions are carried — schema versions, queue caps, identity tuples, virtual-clock injection, and tolerances are all locked here.
+- **OQ-FX-1 — RESOLVED 2026-09-17:** retain one gameplay
+  `compare_tolerance_m = 5×10⁻³ m` for fixture contract comparisons. Keep
+  `oracle_quantizer_absolute_m = 1×10⁻³ m` as a separate pure-math precision
+  operation, not a second gameplay gate. A single calibrated gameplay tolerance
+  avoids unvalidated per-class gates while preserving the distinct oracle
+  quantizer.
+- **OQ-FX-2 — RESOLVED 2026-09-17:** publish `LivenessFact` through the existing
+  `trace_event` topic. The FSM remains the sole writer, the
+  `WW-LIVENESS-1.0` schema preserves record-level observability, and a new
+  transport topic is not introduced without a separate architecture decision.
+
+No other harness questions are carried — schema versions, queue caps, identity
+-tuples, virtual-clock injection, and tolerances are all locked here.
 
 ## Related Decisions
 

@@ -2,7 +2,7 @@
 
 > **Status**: Under Review (fresh decomposition, 2026-08-17)
 > **Created**: 2026-08-17
-> **Last Updated**: 2026-08-30
+> **Last Updated**: 2026-09-20
 > **Source Concept**: design/gdd/game-concept.md (APPROVED conditional — review #24, saturation)
 >
 > **Cross-document authority note (lifecycle / attempt_epoch).** The canonical
@@ -12,7 +12,7 @@
 > `design/registry/entities.yaml` and reproduced verbatim in
 > `player-noise.md §Ownership`. Player Noise, Perception, Guard AI FSM, and
 > Player Movement & Hide all reference the same table; no file owns a distinct
-> version. Status for row 3 (Player Noise) remains **In Review**; this note is
+> version. Status for row 3 (Player Noise) is now **Approved**; this note is
 > additive only and does not change any system status.
 
 ---
@@ -43,7 +43,7 @@ demo. See the concept's review history for the fully-pinned contract surface
 | 0 | Game Concept | Meta | — | **Approved** (2026-08-17, review #24 — conditional, saturation) | `design/gdd/game-concept.md` | — |
 | 1 | Guard AI (FSM core) | AI & Perception | MVP | **Approved** (2026-08-24 — round 8 TERMINAL CONFIRMATION PANEL: charter sweeps clean (A–F diff audit exact, B1–B10 regression 10/10, R6-B1..B4 clean), zero HIGH; sole MED (R8-M1: AC-FSM-11(c) watchdog ceiling omitted the new leg's post-flip commit span) ruled test-arithmetic by CD and repaired same session via CD-sanctioned micro-amendment **rev 4.1** — five-step verification bar V1–V5 passed ⇒ APPROVED final, after 8 review rounds) | `design/gdd/guard-ai-fsm.md` | Perception, NavMesh, Event bus |
 | 2 | Perception systems (vision + hearing + meter) | AI & Perception | MVP | **Approved** (2026-08-18 — confirmation re-review of revision 3.4 in lean mode; all 8 J-gates J1–J8 verified landed; J1 suppression rule re-scoped per-tier closes cleanly; registry lock-step re-established via /consistency-check 2026-08-18 — schema direction_note corrected to the per-tier suppression rule) | `design/gdd/perception.md` | Player Controller, NavMesh, Physics, Event bus |
-| 3 | Player Noise (`NoiseEmitter`) | Gameplay | MVP | **In Review** (2026-08-31 — fresh full re-review returned NEEDS REVISION with 12 blockers; all 12 revised same session: re-anchor formula re-anchored on shared `s_diff` with `S_DIFF`/`reanchor_speed_ratio` STRUCK, ΔY falloff datum moved to guard feet with eye as occlusion-only endpoint, AC19 `confirmed`-only pass states, middleware-neutral onset wording pending OQ3 ADR, persistent while-Carried Ghost Landing Sight, suppression micro-tell, 33 ms p95 whole-frame WebGL gate with 2.0/12.0 ms decomposition records, corroboration exact-origin sharp edge documented, and full MVP fixture repair — pickup re-sited ≥ 2.0 m off patrol corridors, ceiling overhang re-staged with grounded-launch contact math, dedicated void variant, teaching/signal-A/search-patrol/restart records conformed to registry field contracts, gate `trigger_noise_kind`/`landing_fact_id` binding, `guard_feet_ws` datum field + registry conditional rules; pending clean fresh re-review; status intentionally not Approved) | `design/gdd/player-noise.md` | Player Controller, Physics, Event bus, Input |
+| 3 | Player Noise (`NoiseEmitter`) | Gameplay | MVP | **Approved** (2026-09-20 — re-review panel confirmation; all 9 prior blockers and 4 cross-file formula/registry synchronization blockers resolved; monotonic budget formula $t_{reanchor} = \min(t_{investigate\_max}, \max(t_{remaining}, t_{reanchor\_floor}))$ bound per AC15b-MVP and synchronized across entities.yaml, guard-ai-fsm.md, and player-noise.md; missing ballistics parameters input_buffer_window_s and throw_velocity_snap_threshold and ceiling t_investigate_max registered; diagnostic codes aligned; git diff --check clean ⇒ APPROVED final) | `design/gdd/player-noise.md` | Player Controller, Physics, Event bus, Input |
 | 4 | Alert propagation | AI & Perception | Vertical Slice | Not Started | — | Perception, Guard AI, Event bus |
 | 5 | Player Movement & Hide (`HideSpot`) | Gameplay | Target | **In Review** (2026-09-01 — full review returned MAJOR REVISION NEEDED; revision decisions lock Target scope, occupancy-only HideSpot ownership, non-authoritative hunches, rev 4.2 FSM dependency, overlap rejection, formal AC10 escape, and accessibility fallback; pending fresh full re-review) | `design/gdd/player-movement-hide.md` | Player Controller, Physics, Event bus, Level |
 | 6 | Camera system (static, low-scope) | Gameplay | Target | Not Started | — | Perception, Alert propagation, Level, Event bus |

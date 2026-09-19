@@ -122,7 +122,7 @@ The following remain **unavailable and are not claimed** anywhere in the revisio
 - Burst trajectory fixture runtime execution and NavMesh runtime capture
 - Level fixture runtime capture (`REQUIRED_RUNTIME_THROW_SNAPSHOT_ID` and all `actual: UNCAPTURED` fields remain placeholders)
 - Wwise/DSP audio onset measurement (`PENDING_OQ6`; `estimated`/`pending`/`unsupported` remain non-passing)
-- WebGL/target-hardware profiling (2.0 ms slice, 12.0 ms aggregate slice, 16.6 ms frame budget — all uncaptured)
+- WebGL/target-hardware profiling (33.0 ms whole-frame p95 acceptance gate; 2.0 ms hearing/Burst/Perception slice and 12.0 ms aggregate are decomposition diagnostics — all `PENDING_OQ6`/uncaptured)
 - Render-stall replay and deterministic replay identity
 - Restart/reload atomicity runtime test
 - Signal-A runtime visibility

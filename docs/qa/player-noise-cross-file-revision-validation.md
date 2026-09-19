@@ -32,6 +32,28 @@ The following decisions are authoritative for the sweep and must be propagated w
 7. The episode-open corroboration anchor decision remains locked: raw-noise episodes use the first accepted raw noise origin/publication time; hide-entry uses the authored hide-spot position; cap-forced uses the cap-reached position.
 8. Guard selection order is `guard_eid` ascending only; `stable_guard_snapshot_position` remains diagnostic/geometry data and never a sort key.
 
+## Latest bounded hardening slice (2026-09-17)
+
+The source-contract revision adds complete source-order propagation through raw
+facts and Perception relays, typed `step:`/`flight:` ingress validation, an exact
+one-guard MVP hearing profile, explicit Target composition rejection without
+AlertPropagation, null PhysicsScene-proof rejection, explicit session-clock
+ownership, and wide arithmetic before Burst backlog narrowing. Focused regression
+coverage was authored for malformed source IDs, raw-to-relay tuple preservation,
+MVP deferred guard work, and a finite large-delta saturation case. These tests were
+not executed in this environment; no Unity/NUnit/runtime result is claimed.
+
+Cross-file schema updates add `expected_noise_published_fact_id`, separate XZ
+containment from floor-contact validity, and deterministic route-crossing fields
+(active overlay state, tolerance class, physical/NavMesh radii, authorized
+subpath/segments, transition interval, bounds, and crossing result). Their actual
+states remain `UNCAPTURED` until route/scene capture. ADR-0001 now describes the
+implemented typed handoff contract without claiming platform evidence; ADR-0003
+states that virtual-deadline expiry while paused cancels a cue and resume never
+replays it. Composition tests also cover the explicit canonical-clock dependency,
+Target-without-AlertPropagation rejection, null PhysicsScene proof rejection, and
+finite Burst accumulator remainder; these tests remain authored but unexecuted.
+
 ## Static Checks
 
 A follow-up documentation-slice gate was run on 2026-09-08 after the Unity/Physics blocker corrections and whitespace-only cleanup. Results:
@@ -46,7 +68,7 @@ A follow-up documentation-slice gate was run on 2026-09-08 after the Unity/Physi
 
 - Registry/fixture/route field inventory: **PASS (lexical/static)** for the exact PickupInteraction LevelFixture fields, trace-event Pickup fields, Queue serialized-field boundary, deterministic order tuple presence, namespaced source identities, ThrowSnapshot velocity semantics, and audio evidence fields.
 - Queue ordering parity: **PASS (static)**. Guard selection is `[guard_eid]`; fact admission is `[source_timestamp, source_event_class_rank, source_event_id, fact_id]`; pair dispatch is `[source_timestamp, source_event_class_rank, source_event_id, fact_id, guard_eid]`. `stable_guard_snapshot_position` remains diagnostic data and `admission_order_key` remains a validator concept, not a serialized Queue field.
-- Semantic cross-file schema parity: **PASS (static revision)** for `step:<step_id>` / `flight:<flight_handle_id>` serialized identities, finite authored `h_landing` including zero/negative/positive boundary legs, AC10 rejection-leg/code coverage, `AUTHORED_THETA_OUTSIDE_BAND_DOMAIN`, field-for-field authoritative `resolved_velocity`, unique canonical lower-landing route binding, and adapter-owned audio provenance. Runtime execution remains unavailable.
+- Semantic cross-file schema parity: **PASS (static revision)** for typed `step:<step_id>` / positive-decimal `flight:<flight_handle_id>` serialized identities, profile-specific MVP/Target guard caps, finite authored `h_landing` including zero/negative/positive boundary legs, AC10 rejection-leg/code coverage, `AUTHORED_THETA_OUTSIDE_BAND_DOMAIN`, field-for-field authoritative `resolved_velocity`, unique canonical lower-landing route binding, Signal-A XZ/floor predicates, deterministic route-crossing fields, and adapter-owned audio provenance. Runtime execution remains unavailable.
 - F4 deterministic arithmetic: **PASS** for `throw_flat_starter_01` and `throw_lower_landing_01` at `pure_math_relative <= 1e-6`; discriminant, selected positive root, and range recomputed from authored inputs.
 - Pickup sphere boundary arithmetic: **PASS** (`1.80 m² <= 2.56 m²` for the documented example).
 - Route phase/timing arithmetic: **PASS** for the authored `min_validity_s = 1.5`, fixed `dt_max = 1/120 s`, and registered `timeout_boundary_s = 360 × dt_max = 3.0 s`.
@@ -126,3 +148,71 @@ Lifecycle/ownership and identity/ordering seam rechecks returned **PASS** with n
 The fixture seam recheck then found one additional schema omission: `tolerance_class` was present in every `route_evidence` record but absent from the fixture-spec and registry field contracts. It is now declared in both authoritative field lists. The final independent fixture recheck returned **PASS** with no new blocker or regression, and the post-edit static preflight returned **PASS**.
 
 All four seam dispositions are now clear for the final review: lifecycle/ownership **PASS**, identity/ordering **PASS**, physics/audio/performance **PASS for documentation authority** with runtime implementation debt deferred, and fixture/registry/acceptance **PASS**. No runtime/platform evidence or approval state is claimed.
+
+## Final Cross-File Schema Sweep (2026-09-09)
+
+The bounded revision was applied across the canonical Player Noise, FSM, Perception,
+fixture, registry, route, HideSpot, and performance contracts:
+
+- Corroboration predicate: **PASS (static)**. Noise-led anchors require a distinct
+  `fact_id`; `hide-entry`/`cap-forced` anchors use a distinct current-epoch noise
+  publication without fabricating an anchor fact id. Time and XZ endpoints remain
+  inclusive.
+- Decision schemas: **PASS (static)**. `noise-reanchor` and `suppressed-receipt`
+  are defined in Player Noise, Guard FSM, fixture, and registry records. The
+  `suppressed-receipt` reason set is `{cooldown, out-of-window, out-of-area,
+  state-exclusion}`; visibility is provenance, not a reason. The micro-tell rate
+  limit is separate from recommit cooldown.
+- Burst terminal parity: **PASS (static)**. `winning_tick_index` and finite
+  `resolved_velocity` are present in the fixture and registry contracts; terminal
+  publication/t_publish rules remain unchanged.
+- Route/fixture parity: **PASS (static)**. AC21 provenance text is structurally
+  complete, and route Revision Closure uses the authored
+  `{window_id, guard_eid, guard_state, conditions, purpose, min_validity_s, actual}`
+  fields with the certified `patrol_pre_spend_01` 2.24 s window.
+- HideSpot and presentation ownership: **PASS (static)**. Required readability is
+  world-space telegraphing; bark/audio is optional and non-authoritative. Perception
+  owns sensing/relay data; FSM owns decisions; presentation consumes immutable
+  records and performs no gameplay queries.
+- Markdown fence/brace/whitespace smoke checks: **PASS**. C# brace smoke covered 44
+  AI source files with zero unbalanced files; `git diff --check` reported no
+  whitespace errors (only normal line-ending warnings).
+- Duplicate-key-aware YAML validation: **NOT PERFORMED — approved parser unavailable**.
+  No duplicate-key safety is inferred from a normal YAML load.
+
+Unity compilation, Unity NUnit, runtime PhysicsScene/route capture, NavMesh,
+audio/DSP/middleware, WebGL, target-hardware, and performance evidence remain
+unavailable. Player Noise remains **In Review** and no approval/tracking update,
+commit, or push is claimed.
+
+## Authority Hardening Follow-Up (2026-09-10)
+
+A bounded implementation/documentation correction pass closed the verified seams
+from the adversarial integration review:
+
+- FSM suppression precedence now checks `state-exclusion` before cooldown,
+  applies the registered injected live-area predicate to the relay's
+  `AuthoritativeOrigin`, and emits explicit no-query provenance for state-excluded
+  receipts (`not-applicable` / `not-performed:state-exclusion`).
+- Normal Investigate and Chase closes now use the canonical liveness position-source
+  vocabulary, preventing valid closes from being rejected and leaving stale live
+  episodes open.
+- Investigate anchoring, corroboration, and re-anchor targets now consume the
+  immutable relay `AuthoritativeOrigin`, not the diagnostic/transport `Position`.
+  `noise-reanchor` also carries retained anchor kind, identity, position, time, and
+  conditional fact identity across runtime, fixture, and registry schemas.
+- Movement publication validates Walk/Run mode and namespaced `step:` identity before
+  raw publication; the legacy overload is routed through authoritative admission and
+  fails closed rather than bypassing source-kind validation.
+- Pickup reach uses the inclusive feet-to-anchor sphere plus the raised
+  `f12_noise_origin_offset` for the E20 linecast. Malformed finite-contact data now
+  terminates Burst fail-closed without mutating flight state or publishing a timeout.
+- AC21 profile contracts now distinguish scalar thresholds from typed
+  `budget_evidence`, enumerate queue/catch-up/stall controls, and require timer
+  source/resolution/frame-index provenance. These remain documentation contracts;
+  no measurement is claimed.
+
+Static follow-up: targeted schema/marker checks and source brace checks remain the
+available evidence. Unity/runtime/PhysicsScene/HideSpot containment, route/NavMesh,
+audio/DSP, WebGL, target-hardware, and duplicate-key-aware YAML evidence remain
+unavailable and non-passing.
