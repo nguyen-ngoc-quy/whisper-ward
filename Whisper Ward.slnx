@@ -1,0 +1,6 @@
+﻿<Solution>
+  <Project Path="WhisperWard.AI.csproj" />
+  <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="WhisperWard.AI.Tests.csproj" />
+  <Project Path="Assembly-CSharp.csproj" />
+</Solution>
