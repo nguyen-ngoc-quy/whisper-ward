@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using UnityEngine;
 using WhisperWard.AI.Core;
 
@@ -33,6 +32,16 @@ namespace WhisperWard.AI.Perception
                 throw new ArgumentException("guard-position");
             if (float.IsNaN(residualR) || float.IsInfinity(residualR))
                 throw new ArgumentException("residualR");
+            if (residualR < 0f
+                || residualR > NoiseRuntimeConfiguration.RegisteredReanchorMaxMeters)
+                throw new ArgumentOutOfRangeException(nameof(residualR));
+
+            // Feet and offset are individually finite, but the derived eye
+            // endpoint can still overflow; a non-finite occlusion ray endpoint
+            // must fail closed at capture time.
+            Vector3 eyePosition = feetPosition + eyeOffset;
+            if (!IsFinite(eyePosition))
+                throw new ArgumentException("guard-eye-position");
 
             GuardEid = guardEid;
             FeetPosition = feetPosition;
@@ -56,6 +65,17 @@ namespace WhisperWard.AI.Perception
         {
             return !float.IsNaN(value) && !float.IsInfinity(value);
         }
+    }
+
+    /// <summary>
+    /// Supplies the authoritative residual captured for one guard at the hearing
+    /// boundary. Implementations must not reconstruct residual from transform or
+    /// FSM state after the boundary has been captured.
+    /// </summary>
+    public interface IGuardResidualSnapshotProvider
+    {
+        bool TryGetResidual(string guardEid, out float residualR,
+            out string diagnosticCode);
     }
 
     /// <summary>
@@ -150,6 +170,10 @@ namespace WhisperWard.AI.Perception
             new Dictionary<string, string>(StringComparer.Ordinal);
         private readonly Dictionary<string, LivenessFact> _livenessByGuard =
             new Dictionary<string, LivenessFact>(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _relayEntryByIdentity =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _acceptedOutcomes =
+            new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<EventIdentityKey> _acceptedFacts =
             new HashSet<EventIdentityKey>();
         private readonly List<PendingFact> _pendingFacts = new List<PendingFact>();
@@ -175,16 +199,39 @@ namespace WhisperWard.AI.Perception
         public PerceptionHearingService(IEventBus eventBus, IVirtualTickClock clock,
             PhysicsQueryProfile physicsProfile,
             IGuardHearingSnapshotProvider snapshotProvider,
-            float hearingYHardCutoff, int relayQueueCapacity = 512,
+            float hearingYHardCutoff,
+            int relayQueueCapacity = NoiseRuntimeConfiguration.RegisteredRelayQueueCapacity,
             int maxRelayRetries = 3)
             : this(eventBus, clock, physicsProfile, snapshotProvider,
-                hearingYHardCutoff, 0.25f, 0.2f, 1, 4, 30, 8, 30, 512,
-                512, relayQueueCapacity, maxRelayRetries, 0.000001f, null)
+                hearingYHardCutoff, 0.25f, 0.2f, 1, 4,
+                NoiseRuntimeConfiguration.RegisteredMvpMaxHearingGuards,
+                8, 30, 512,
+                NoiseRuntimeConfiguration.RegisteredRawFactQueueCapacity,
+                relayQueueCapacity, maxRelayRetries, 0.000001f, null)
         {
         }
 
         /// <summary>
         /// Creates a hearing service from one immutable runtime configuration.
+        /// The registered vertical cutoff is taken from that configuration rather
+        /// than from a second composition-root value.
+        /// </summary>
+        public PerceptionHearingService(IEventBus eventBus, IVirtualTickClock clock,
+            PhysicsQueryProfile physicsProfile,
+            IGuardHearingSnapshotProvider snapshotProvider,
+            NoiseRuntimeConfiguration configuration,
+            IEventDiagnosticSink diagnosticSink = null)
+            : this(eventBus, clock, physicsProfile, snapshotProvider,
+                configuration == null
+                    ? NoiseRuntimeConfiguration.RegisteredHearingYHardCutoff
+                    : configuration.HearingYHardCutoffMeters,
+                configuration, diagnosticSink)
+        {
+        }
+
+        /// <summary>
+        /// Compatibility overload retaining an explicit cutoff argument. The
+        /// argument must match the immutable registered configuration value.
         /// </summary>
         public PerceptionHearingService(IEventBus eventBus, IVirtualTickClock clock,
             PhysicsQueryProfile physicsProfile,
@@ -197,12 +244,18 @@ namespace WhisperWard.AI.Perception
                 configuration == null ? 0.2f : configuration.HearingIntervalSeconds,
                 configuration == null ? 1 : configuration.MaxHearingBoundariesPerFrame,
                 configuration == null ? 4 : configuration.MaxDeferredHearingBoundaries,
-                configuration == null ? 30 : configuration.MaxHearingGuards,
+                configuration == null
+                    ? NoiseRuntimeConfiguration.RegisteredMvpMaxHearingGuards
+                    : configuration.MaxHearingGuards,
                 configuration == null ? 8 : configuration.MaxHearingFacts,
                 configuration == null ? 30 : configuration.MaxHearingPairs,
                 configuration == null ? 512 : configuration.HearingWorkCapacity,
-                configuration == null ? 128 : configuration.RawFactQueueCapacity,
-                configuration == null ? 512 : configuration.RelayQueueCapacity,
+                configuration == null
+                    ? NoiseRuntimeConfiguration.RegisteredRawFactQueueCapacity
+                    : configuration.RawFactQueueCapacity,
+                configuration == null
+                    ? NoiseRuntimeConfiguration.RegisteredRelayQueueCapacity
+                    : configuration.RelayQueueCapacity,
                 configuration == null ? 3 : configuration.MaxRetries,
                 configuration == null ? 0.000001f : configuration.MathRelativeTolerance,
                 diagnosticSink)
@@ -230,18 +283,50 @@ namespace WhisperWard.AI.Perception
                 ?? throw new ArgumentNullException(nameof(snapshotProvider));
             if (!IsFinitePositive(hearingYHardCutoff))
                 throw new ArgumentOutOfRangeException(nameof(hearingYHardCutoff));
+            if (Mathf.Abs(hearingYHardCutoff
+                    - NoiseRuntimeConfiguration.RegisteredHearingYHardCutoff)
+                    > 0.000001f)
+                throw new ArgumentException(
+                    "perception-hearing-cutoff-not-registered",
+                    nameof(hearingYHardCutoff));
             if (!IsFiniteNonNegative(movementOriginOffset))
                 throw new ArgumentOutOfRangeException(nameof(movementOriginOffset));
             if (!IsFinitePositive(hearingInterval))
                 throw new ArgumentOutOfRangeException(nameof(hearingInterval));
             if (maxHearingBoundariesPerFrame <= 0
-                || maxDeferredHearingBoundaries <= 0 || maxHearingGuards <= 0
-                || maxHearingFacts <= 0 || maxHearingPairs <= 0
-                || hearingWorkCapacity <= 0 || rawFactQueueCapacity <= 0)
+                || maxHearingBoundariesPerFrame
+                    > NoiseRuntimeConfiguration.RegisteredMaxBoundariesPerFrame
+                || maxDeferredHearingBoundaries
+                    < NoiseRuntimeConfiguration.RegisteredMinDeferredBoundaryCapacity
+                || maxDeferredHearingBoundaries
+                    > NoiseRuntimeConfiguration.RegisteredMaxDeferredBoundaryCapacity
+                || maxHearingGuards
+                    < NoiseRuntimeConfiguration.RegisteredMvpMaxHearingGuards
+                || maxHearingGuards
+                    > NoiseRuntimeConfiguration.RegisteredTargetMaxHearingGuards
+                || maxHearingFacts
+                    < NoiseRuntimeConfiguration.RegisteredMinHearingFacts
+                || maxHearingFacts
+                    > NoiseRuntimeConfiguration.RegisteredMaxHearingFacts
+                || maxHearingPairs
+                    < NoiseRuntimeConfiguration.RegisteredMinHearingPairs
+                || maxHearingPairs
+                    > NoiseRuntimeConfiguration.RegisteredMaxHearingPairs
+                || hearingWorkCapacity
+                    < NoiseRuntimeConfiguration.RegisteredMinHearingWorkCapacity
+                || hearingWorkCapacity
+                    > NoiseRuntimeConfiguration.RegisteredMaxHearingWorkCapacity
+                || rawFactQueueCapacity
+                    < NoiseRuntimeConfiguration.RegisteredMinRawFactQueueCapacity
+                || rawFactQueueCapacity
+                    > NoiseRuntimeConfiguration.RegisteredMaxRawFactQueueCapacity)
                 throw new ArgumentOutOfRangeException(nameof(hearingWorkCapacity));
-            if (relayQueueCapacity <= 0)
+            if (relayQueueCapacity
+                    < NoiseRuntimeConfiguration.RegisteredMinRelayQueueCapacity
+                || relayQueueCapacity
+                    > NoiseRuntimeConfiguration.RegisteredMaxRelayQueueCapacity)
                 throw new ArgumentOutOfRangeException(nameof(relayQueueCapacity));
-            if (maxRelayRetries < 0)
+            if (maxRelayRetries < 1 || maxRelayRetries > 8)
                 throw new ArgumentOutOfRangeException(nameof(maxRelayRetries));
             if (!IsFinitePositive(mathRelativeTolerance))
                 throw new ArgumentOutOfRangeException(nameof(mathRelativeTolerance));
@@ -351,6 +436,12 @@ namespace WhisperWard.AI.Perception
             {
                 return EventHandoffResult.Rejected("perception-hearing-stale-fact");
             }
+            if (!string.Equals(noise.PublicationState, "published",
+                    StringComparison.Ordinal))
+            {
+                return EventHandoffResult.Rejected(
+                    "perception-hearing-nonpublished-fact");
+            }
 
             var factKey = new EventIdentityKey(noise.SessionId, noise.AttemptEpoch,
                 noise.FactId.ToString("D"));
@@ -360,10 +451,7 @@ namespace WhisperWard.AI.Perception
                 return EventHandoffResult.Retry("perception-hearing-raw-queue-full");
 
             float admittedAt = _clock.CurrentTime;
-            float deadlineAnchor = noise.SourceEventClassRank
-                == (int)NoiseSourceKind.Burst
-                ? noise.TerminalPublicationTime : noise.SourceTimestamp;
-            float deadline = deadlineAnchor + _hearingInterval;
+            float deadline = noise.TPublish + _hearingInterval;
             if (admittedAt > deadline + _mathRelativeTolerance)
             {
                 RecordRejectedFact("perception-hearing-deadline-missed", noise);
@@ -462,6 +550,8 @@ namespace WhisperWard.AI.Perception
         {
             _activeEntryByGuard.Clear();
             _livenessByGuard.Clear();
+            _relayEntryByIdentity.Clear();
+            _acceptedOutcomes.Clear();
             _acceptedFacts.Clear();
             _pendingFacts.Clear();
             _deferredPairs.Clear();
@@ -554,10 +644,10 @@ namespace WhisperWard.AI.Perception
 
             var snapshots = new List<GuardHearingSnapshot>(captured);
             snapshots.Sort(CompareSnapshots);
-            if (snapshots.Count > _maxHearingGuards)
-                snapshots.RemoveRange(_maxHearingGuards,
-                    snapshots.Count - _maxHearingGuards);
 
+            // Keep the complete ordered snapshot. The per-boundary guard cap is
+            // enforced by each PendingFact cursor so unselected guards remain
+            // deferred work instead of being silently dropped at capture time.
             // Stage newly eligible facts whenever capacity remains. Existing
             // deferred pairs sort ahead of these additions, so this does not let
             // newer work overtake older retained work.
@@ -605,6 +695,18 @@ namespace WhisperWard.AI.Perception
                     continue;
                 if (pending.AdmittedAt > boundaryTime + _mathRelativeTolerance
                     || stagedCount >= factCount)
+                {
+                    retained.Add(pending);
+                    continue;
+                }
+
+                // Not-before-publication: a fact may not be evaluated at a
+                // boundary earlier than its own t_publish (exact equality is
+                // eligible). A Burst catch-up terminal admitted in advance of
+                // its terminal publication time stays retained until the first
+                // boundary at or after t_publish.
+                if (pending.Fact.TPublish > boundaryTime
+                    + _mathRelativeTolerance)
                 {
                     retained.Add(pending);
                     continue;
@@ -667,28 +769,50 @@ namespace WhisperWard.AI.Perception
                 noise.SourceTimestamp,
                 boundaryTime,
                 snapshot.ResidualR,
-                noise.TerminalPublicationTime);
+                noise.TerminalPublicationTime,
+                noise.SourceEventId,
+                noise.FlightHandleId,
+                noise.MovementMode,
+                noise.ResolvedNominalRadius,
+                noise.PublicationState);
             QueueRelay(relay, pair.Deadline, isNewEntry);
         }
 
         private bool IsHeard(NoisePublished noise, GuardHearingSnapshot snapshot)
         {
+            // Every geometry operand must be finite before any predicate
+            // consumes it: a NaN radius would make every comparison false,
+            // bypassing the effective-radius rejection, and a non-finite
+            // origin or ray endpoint can only fail closed.
+            if (!IsFinite(noise.AuthoritativeOrigin)
+                || !IsFinite(noise.Radius) || noise.Radius <= 0f
+                || !IsFinite(noise.TPublish))
+                return false;
+
             Vector3 origin = noise.AuthoritativeOrigin;
             if (noise.SourceEventClassRank == (int)NoiseSourceKind.Movement)
                 origin.y += _movementOriginOffset;
+            if (!IsFinite(origin))
+                return false;
+
             Vector3 eye = snapshot.EyePosition;
             float deltaY = Mathf.Abs(snapshot.FeetPosition.y - origin.y);
+            if (!IsFinite(deltaY))
+                return false;
             if (deltaY >= _hearingYHardCutoff)
                 return false;
 
             float effectiveRadius = noise.Radius
                 * Mathf.Max(0f, 1f - deltaY / _hearingYHardCutoff);
-            if (effectiveRadius <= 0f) return false;
+            if (!IsFinite(effectiveRadius) || effectiveRadius <= 0f)
+                return false;
 
             Vector3 delta = origin - eye;
             float planarDistance = new Vector2(delta.x, delta.z).magnitude;
+            if (!IsFinite(planarDistance))
+                return false;
             if (planarDistance > effectiveRadius) return false;
-            return _physicsProfile.Linecast(eye, origin).Clear;
+            return _physicsProfile.Linecast(origin, eye).Clear;
         }
 
         private string GetOrReserveEntry(string guardEid, ulong factId,
@@ -746,18 +870,58 @@ namespace WhisperWard.AI.Perception
             else if (string.Equals(fact.Operation, "close", StringComparison.Ordinal))
             {
                 RemoveEntryIfCurrent(fact.GuardEid, fact.EntryId);
+                RemoveRelayIdentitiesForEntry(fact.GuardEid, fact.EntryId);
             }
         }
 
         private void OnNoiseConsumptionOutcome(NoiseConsumptionOutcome outcome)
         {
+            if (outcome == null
+                || !string.Equals(outcome.SessionId, _eventBus.SessionId,
+                    StringComparison.Ordinal)
+                || outcome.AttemptEpoch != _eventBus.AttemptEpoch)
+                return;
+
+            string outcomeKey = GetRelayIdentity(outcome.GuardEid,
+                outcome.FactId);
+            if (_acceptedOutcomes.Contains(outcomeKey)) return;
+
+            string expectedEntry;
+            if (!_relayEntryByIdentity.TryGetValue(outcomeKey, out expectedEntry))
+            {
+                LivenessFact liveness;
+                if (_livenessByGuard.TryGetValue(outcome.GuardEid,
+                    out liveness))
+                    expectedEntry = liveness.EntryId;
+            }
+
+            if (string.IsNullOrWhiteSpace(expectedEntry)
+                || !string.Equals(expectedEntry, outcome.EntryId,
+                    StringComparison.Ordinal))
+            {
+                LastRejectionCode = "perception-hearing-outcome-mismatch";
+                var outcomeEnvelope = new EventEnvelope(outcome.SessionId,
+                    outcome.AttemptEpoch, outcome.Timestamp, outcome.Publisher,
+                    outcome.Identity, outcome.Phase, outcome);
+                RecordDiagnostic(LastRejectionCode, outcomeEnvelope, 0,
+                    _pendingRelays.Count, _relayQueueCapacity,
+                    "relay-outcome", outcomeKey);
+                return;
+            }
+
             // Consumption is an outcome for one relay, not authoritative episode
-            // liveness. Only FSM-owned LivenessFact transitions close reservations.
+            // liveness. Keep the entry reserved while the FSM-owned liveness
+            // record remains open; only close/stale liveness or transport failure
+            // releases it.
+            _acceptedOutcomes.Add(outcomeKey);
         }
 
         private bool QueueRelay(NoiseHeardRelay relay, float deadline,
             bool isNewEntry)
         {
+            if (relay == null) return false;
+            _relayEntryByIdentity[GetRelayIdentity(relay.GuardEid,
+                relay.FactId)] = relay.EntryId;
             EventPublishResult result = _eventBus.Publish(relay);
             if (result.Admission != EventAdmission.Retry)
             {
@@ -766,6 +930,7 @@ namespace WhisperWard.AI.Perception
                     RejectRelay(relay, result.Code, result.RetryCount);
                     if (isNewEntry)
                         RemoveEntryIfCurrent(relay.GuardEid, relay.EntryId);
+                    RemoveRelayIdentity(relay);
                 }
                 return result.Admission == EventAdmission.Accepted
                     || result.Admission == EventAdmission.Duplicate;
@@ -777,6 +942,7 @@ namespace WhisperWard.AI.Perception
                     result.RetryCount);
                 if (isNewEntry)
                     RemoveEntryIfCurrent(relay.GuardEid, relay.EntryId);
+                RemoveRelayIdentity(relay);
                 return false;
             }
 
@@ -797,17 +963,17 @@ namespace WhisperWard.AI.Perception
             string rejectionCode = string.IsNullOrWhiteSpace(code)
                 ? "perception-hearing-queue-overflow-rejected" : code;
             LastRejectionCode = rejectionCode;
-            RecordDiagnostic(rejectionCode, relay, retryCount,
-                _pendingRelays.Count, _relayQueueCapacity, "relay",
-                relay.SourceTimestamp.ToString("R") + "|" + relay.FactId
-                    + "|" + relay.GuardEid);
+            RecordDiagnostic(rejectionCode, (IEvent)relay, retryCount,
+                _relayQueueCapacity);
         }
 
         private void ReleasePendingReservation(PendingRelay pending)
         {
-            if (pending != null && pending.IsNewEntry)
+            if (pending == null || pending.Relay == null) return;
+            if (pending.IsNewEntry)
                 RemoveEntryIfCurrent(pending.Relay.GuardEid,
                     pending.Relay.EntryId);
+            RemoveRelayIdentity(pending.Relay);
         }
 
         private void RecordRejectedFact(string code, NoisePublished fact = null,
@@ -819,9 +985,8 @@ namespace WhisperWard.AI.Perception
             LastRejectionCode = rejectionCode;
             if (fact != null)
             {
-                RecordDiagnostic(rejectionCode, fact, retryCount,
-                    _pendingFacts.Count, _rawFactQueueCapacity, "raw-fact",
-                    fact.SourceTimestamp.ToString("R") + "|" + fact.FactId);
+                RecordDiagnostic(rejectionCode, (IEvent)fact, retryCount,
+                    _rawFactQueueCapacity);
             }
         }
 
@@ -893,7 +1058,19 @@ namespace WhisperWard.AI.Perception
 
         private void MarkFactDeadlineMissed(NoisePublished fact)
         {
-            EventIdentityKey key = GetFactKey(fact);
+            if (fact == null) return;
+            MarkFactDeadlineMissed(GetFactKey(fact), fact);
+        }
+
+        private void MarkFactDeadlineMissed(NoiseHeardRelay relay)
+        {
+            if (relay == null) return;
+            MarkFactDeadlineMissed(GetFactKey(relay), null);
+        }
+
+        private void MarkFactDeadlineMissed(EventIdentityKey key,
+            NoisePublished fact)
+        {
             if (_deadlineFailedFacts.Add(key))
                 RecordRejectedFact("perception-hearing-deadline-missed", fact);
 
@@ -939,6 +1116,32 @@ namespace WhisperWard.AI.Perception
                 _activeEntryByGuard.Remove(guardEid);
         }
 
+        private string GetRelayIdentity(string guardEid, ulong factId)
+        {
+            return guardEid + "|" + factId.ToString("D");
+        }
+
+        private void RemoveRelayIdentity(NoiseHeardRelay relay)
+        {
+            if (relay != null)
+                _relayEntryByIdentity.Remove(GetRelayIdentity(relay.GuardEid,
+                    relay.FactId));
+        }
+
+        private void RemoveRelayIdentitiesForEntry(string guardEid, string entryId)
+        {
+            var remove = new List<string>();
+            foreach (var pair in _relayEntryByIdentity)
+            {
+                if (string.Equals(pair.Value, entryId, StringComparison.Ordinal)
+                    && pair.Key.StartsWith(guardEid + "|",
+                        StringComparison.Ordinal))
+                    remove.Add(pair.Key);
+            }
+            for (int i = 0; i < remove.Count; i++)
+                _relayEntryByIdentity.Remove(remove[i]);
+        }
+
         private EventIdentityKey GetFactKey(NoisePublished fact)
         {
             return new EventIdentityKey(fact.SessionId, fact.AttemptEpoch,
@@ -972,6 +1175,11 @@ namespace WhisperWard.AI.Perception
             if (compare != 0) return compare;
             return string.Compare(left.Identity, right.Identity,
                 StringComparison.Ordinal);
+        }
+
+        private static bool IsFinite(Vector3 value)
+        {
+            return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
         }
 
         private static bool IsFinite(float value)
@@ -1011,23 +1219,14 @@ namespace WhisperWard.AI.Perception
         }
 
         /// <summary>
-        /// Same-timestamp source-event identity comparison. The registered
-        /// admission keys order by the numeric step_id / flight_handle_id
-        /// source ids; a plain string compare would order "10" before "9"
-        /// and disagree with the emitter's allocation order. Matches
-        /// NoiseEmitter.CompareSourceEventIds.
+        /// Same-timestamp source-event identity comparison. Numeric suffixes in
+        /// canonical namespaced identities are compared numerically, matching the
+        /// emitter allocation order; malformed or non-numeric legacy identities
+        /// retain deterministic ordinal ordering.
         /// </summary>
         private static int CompareSourceEventIds(string left, string right)
         {
-            ulong leftNumber;
-            ulong rightNumber;
-            bool leftIsNumeric = ulong.TryParse(left, NumberStyles.None,
-                CultureInfo.InvariantCulture, out leftNumber);
-            bool rightIsNumeric = ulong.TryParse(right, NumberStyles.None,
-                CultureInfo.InvariantCulture, out rightNumber);
-            if (leftIsNumeric && rightIsNumeric)
-                return leftNumber.CompareTo(rightNumber);
-            return string.Compare(left, right, StringComparison.Ordinal);
+            return NoiseSourceOrdering.CompareSourceEventIds(left, right);
         }
 
         private static int CompareSnapshots(GuardHearingSnapshot left,

@@ -31,3 +31,6 @@ Thumbs.db
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
 [Mm]emoryCaptures/
+
+# Generated mirror of canonical src/AI used by the local Unity runner
+/Assets/WhisperWardAI/

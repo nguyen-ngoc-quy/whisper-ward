@@ -15,10 +15,17 @@ namespace WhisperWard.AI.FSM.States
     {
         public override string StateName { get { return "Chase"; } }
 
+        /// <summary>Last authoritative position retained for lifecycle handoff.</summary>
+        public Vector3 AuthoritativeEpisodePosition
+        {
+            get { return _lastKnownPosition; }
+        }
+
         private string _entryId;
         private string _cause;
         private string _terminalCause;
         private Vector3 _initialPosition;
+        private Vector3 _promotionPosition;
         private Vector3 _holdPosition;
         private Vector3 _lastKnownPosition;
         private Vector3 _lastObservedPlayerPosition;
@@ -26,17 +33,7 @@ namespace WhisperWard.AI.FSM.States
         private bool _witnessedInteriorCapture;
         private PhysicsQueryProfile _physicsProfile;
 
-        // Tuning values are registry-backed in the design contract. These defaults
-        // remain a provisional adapter until the runtime config service is wired.
-        private const float T_GIVEUP_CHASE = 8.0f;
-        private const float T_CAP_CHASE = 30.0f;
-        private const int N_RESIGHT_CAP = 2;
-        private const float T_RESIGHT_MIN = 1.0f;
-        private const float T_CATCH = 1.0f;
-        private const float CATCH_RANGE = 5.5f;
-        private const float DELTA_Y_TOLERANCE = 1.0f;
-        private const float HYSTERESIS = 0.5f;
-        private const float NAVMESH_SAMPLE_MAXDISTANCE = 0.4f;
+        private NoiseRuntimeConfiguration _noiseConfiguration;
 
         private float _giveupTimer;
         private float _durationTimer;
@@ -53,31 +50,52 @@ namespace WhisperWard.AI.FSM.States
         private bool _spotOccupancyKnown;
         private bool _spotOccupied;
         private bool _isLivenessPromotion;
+        private bool _hasOpenerTPublish;
+        private float _openerTPublish;
 
         private NavMeshAgent _agent;
         private GuardNavigator _navigator;
         private GuardFSM _fsm;
 
         public void Init(string entryId, string cause, Vector3 position,
-            bool witnessedInteriorCapture = false, Vector3? spotFrontPosition = null)
+            bool witnessedInteriorCapture = false, Vector3? spotFrontPosition = null,
+            float? openerTPublish = null)
         {
             _entryId = entryId ?? string.Empty;
             _cause = cause ?? "unknown";
             _initialPosition = position;
+            _promotionPosition = position;
             _holdPosition = spotFrontPosition.HasValue
                 ? spotFrontPosition.Value : position;
             _lastKnownPosition = position;
             _witnessedInteriorCapture = witnessedInteriorCapture;
             _isLivenessPromotion = false;
             _terminalCause = null;
+            _openerTPublish = openerTPublish.HasValue
+                ? openerTPublish.Value : 0f;
+            _hasOpenerTPublish = openerTPublish.HasValue;
         }
 
         /// <summary>Initializes Chase as an in-place liveness promotion.</summary>
         public void InitPromotion(string entryId, string cause, Vector3 position)
         {
-            Init(entryId, cause, position);
+            InitPromotion(entryId, cause, position, position);
+        }
+
+        /// <summary>
+        /// Initializes Chase promotion while retaining the authoritative
+        /// Investigate episode position separately from Chase entry geometry.
+        /// </summary>
+        public void InitPromotion(string entryId, string cause, Vector3 position,
+            Vector3 promotionPosition, bool witnessedInteriorCapture = false,
+            Vector3? spotFrontPosition = null)
+        {
+            Init(entryId, cause, position, witnessedInteriorCapture,
+                spotFrontPosition);
+            _promotionPosition = promotionPosition;
             _isLivenessPromotion = true;
         }
+
 
         /// <summary>
         /// Injects the validated shared physics profile. A missing profile fails
@@ -88,13 +106,93 @@ namespace WhisperWard.AI.FSM.States
             _physicsProfile = profile;
         }
 
+        /// <summary>
+        /// Injects the immutable registry-backed Chase tuning contract. The
+        /// registered compatibility values remain available for deterministic
+        /// fixtures that do not use the composition root.
+        /// </summary>
+        public void ConfigureNoiseRuntime(NoiseRuntimeConfiguration configuration)
+        {
+            _noiseConfiguration = configuration;
+        }
+
+        private float ChaseGiveupSeconds
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredChaseGiveupSeconds
+                : _noiseConfiguration.ChaseGiveupSeconds; }
+        }
+
+        private float ChaseCapSeconds
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredChaseCapSeconds
+                : _noiseConfiguration.ChaseCapSeconds; }
+        }
+
+        private int ResightCap
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredResightCap
+                : _noiseConfiguration.ResightCap; }
+        }
+
+        private float ResightMinimumSeconds
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredResightMinimumSeconds
+                : _noiseConfiguration.ResightMinimumSeconds; }
+        }
+
+        private float CatchSeconds
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredCatchSeconds
+                : _noiseConfiguration.CatchSeconds; }
+        }
+
+        private float CatchRangeMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredCatchRangeMeters
+                : _noiseConfiguration.CatchRangeMeters; }
+        }
+
+        private float DeltaYToleranceMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredDeltaYToleranceMeters
+                : _noiseConfiguration.DeltaYToleranceMeters; }
+        }
+
+        private float HysteresisMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredHysteresisMeters
+                : _noiseConfiguration.HysteresisMeters; }
+        }
+
+        private float NavMeshSampleMaxDistanceMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredNavMeshSampleMaxDistanceMeters
+                : _noiseConfiguration.NavMeshSampleMaxDistanceMeters; }
+        }
+
+        private float GuardEyeHeightMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredGuardEyeHeightMeters
+                : _noiseConfiguration.GuardEyeHeightMeters; }
+        }
+
         public override void OnEnter(GuardFSM fsm)
         {
             Debug.Log($"[ChaseState] Entering Chase via {_cause}");
             _fsm = fsm;
             _terminalCause = null;
-            _giveupTimer = T_GIVEUP_CHASE;
-            _durationTimer = T_CAP_CHASE;
+            _giveupTimer = ChaseGiveupSeconds;
+            _durationTimer = ChaseCapSeconds;
             _resightCount = 0;
             _resightAccumulator = 0f;
             _hasLOS = false;
@@ -104,7 +202,7 @@ namespace WhisperWard.AI.FSM.States
             _isReachable = false;
             _hasObservedPlayerPosition = false;
             _lastObservedPlayerPosition = Vector3.zero;
-            _catchTimer = T_CATCH;
+            _catchTimer = CatchSeconds;
             _isCatchLive = false;
             _isHoldingSpotFront = _witnessedInteriorCapture;
             _spotOccupancyKnown = false;
@@ -121,6 +219,30 @@ namespace WhisperWard.AI.FSM.States
             fsm.SetGoalMode(_isHoldingSpotFront
                 ? GuardGoalMode.HideSpotFront : GuardGoalMode.LivePursuit);
 
+            if (_isLivenessPromotion
+                && fsm.IsLivenessPromotionPending(_entryId))
+            {
+                fsm.PublishLivenessFact("promote", "Chase",
+                    "investigate-to-chase", fsm.CurrentVirtualTime, _entryId,
+                    _promotionPosition, LivenessPositionSources.EpisodePosition);
+                fsm.ConsumeLivenessPromotion();
+            }
+            else
+            {
+                // A direct Chase opener keeps the authoritative source-event
+                // timestamp, including exact zero; the virtual clock is only a
+                // fallback when the opener carries no timestamp authority.
+                fsm.currentEntryId = _entryId;
+                fsm.PublishLivenessFact("open", "Chase",
+                    "Chase-entry",
+                    _hasOpenerTPublish ? _openerTPublish
+                        : fsm.CurrentVirtualTime,
+                    _entryId,
+                    _initialPosition, LivenessPositionSources.OpenerDecision);
+            }
+
+            // The liveness transition is authoritative and must precede the
+            // presentation-facing ChaseEntry decision in the same boundary.
             fsm.PublishDecision(new ChaseEntry
             {
                 EntryId = _entryId,
@@ -129,20 +251,6 @@ namespace WhisperWard.AI.FSM.States
                 Position = _initialPosition,
                 PairedChaseReached = _cause == "threshold"
             });
-            if (_isLivenessPromotion
-                && fsm.IsLivenessPromotionPending(_entryId))
-            {
-                fsm.PublishLivenessFact("promote", "Chase",
-                    "investigate-to-chase", fsm.CurrentVirtualTime, _entryId,
-                    _initialPosition, "chase-promotion-authority");
-                fsm.ConsumeLivenessPromotion();
-            }
-            else
-            {
-                fsm.PublishLivenessFact("open", "Chase",
-                    "Chase-entry", fsm.CurrentVirtualTime, _entryId,
-                    _initialPosition, "chase-entry-authority");
-            }
         }
 
         public override void OnUpdate(GuardFSM fsm, long tick, float delta)
@@ -174,12 +282,12 @@ namespace WhisperWard.AI.FSM.States
                 else if (_resightActive)
                 {
                     _resightAccumulator += delta;
-                    if (_resightAccumulator >= T_RESIGHT_MIN)
+                    if (_resightAccumulator >= ResightMinimumSeconds)
                     {
                         _resightCount++;
                         _resightAccumulator = 0f;
                         _resightActive = false;
-                        if (_resightCount >= N_RESIGHT_CAP)
+                        if (_resightCount >= ResightCap)
                         {
                             TerminateChase(fsm, "resight_cap");
                             return;
@@ -204,7 +312,7 @@ namespace WhisperWard.AI.FSM.States
                     if (!_isCatchLive)
                     {
                         _isCatchLive = true;
-                        _catchTimer = T_CATCH;
+                        _catchTimer = CatchSeconds;
                     }
                     else
                     {
@@ -227,7 +335,7 @@ namespace WhisperWard.AI.FSM.States
                 else if (_isCatchLive && !IsWithinHysteresis(catchTarget))
                 {
                     _isCatchLive = false;
-                    _catchTimer = T_CATCH;
+                    _catchTimer = CatchSeconds;
                 }
             }
         }
@@ -264,7 +372,7 @@ namespace WhisperWard.AI.FSM.States
             NavMeshHit hit;
             if (_agent != null && _agent.areaMask != 0
                 && NavMesh.SamplePosition(playerPosition, out hit,
-                    NAVMESH_SAMPLE_MAXDISTANCE, _agent.areaMask))
+                    NavMeshSampleMaxDistanceMeters, _agent.areaMask))
                 return hit.position;
             return playerPosition;
         }
@@ -285,7 +393,7 @@ namespace WhisperWard.AI.FSM.States
             if (_agent == null || _agent.areaMask == 0)
                 return false;
             if (!NavMesh.SamplePosition(playerPosition, out proxy,
-                NAVMESH_SAMPLE_MAXDISTANCE, _agent.areaMask))
+                NavMeshSampleMaxDistanceMeters, _agent.areaMask))
                 return EvaluateBackstop(playerPosition);
             return EvaluatePathArrival(proxy.position, playerPosition)
                 && EvaluateBackstop(playerPosition);
@@ -302,8 +410,8 @@ namespace WhisperWard.AI.FSM.States
             float pathLength = GetPathLength(path);
             if (path.status == NavMeshPathStatus.PathPartial)
                 return EvaluatePartialPathClearance(path, playerPosition)
-                    && pathLength <= CATCH_RANGE + HYSTERESIS;
-            return pathLength <= CATCH_RANGE + HYSTERESIS;
+                    && pathLength <= CatchRangeMeters + HysteresisMeters;
+            return pathLength <= CatchRangeMeters + HysteresisMeters;
         }
 
         private bool EvaluatePartialPathClearance(NavMeshPath path, Vector3 playerPosition)
@@ -323,11 +431,12 @@ namespace WhisperWard.AI.FSM.States
             if (_physicsProfile == null) return false;
             Vector3 delta = playerPosition - _fsm.transform.position;
             float xzDistance = new Vector2(delta.x, delta.z).magnitude;
-            if (xzDistance > CATCH_RANGE + HYSTERESIS
-                || Mathf.Abs(delta.y) > DELTA_Y_TOLERANCE)
+            if (xzDistance > CatchRangeMeters + HysteresisMeters
+                || Mathf.Abs(delta.y) > DeltaYToleranceMeters)
                 return false;
 
-            Vector3 eye = _fsm.transform.position + Vector3.up * 1.6f;
+            Vector3 eye = _fsm.transform.position
+                + Vector3.up * GuardEyeHeightMeters;
             Vector3 target = playerPosition + Vector3.up * 0.25f;
             return _physicsProfile.Linecast(eye, target).Clear;
         }
@@ -336,8 +445,8 @@ namespace WhisperWard.AI.FSM.States
         {
             Vector3 delta = playerPosition - _fsm.transform.position;
             float xzDistance = new Vector2(delta.x, delta.z).magnitude;
-            return xzDistance <= CATCH_RANGE + HYSTERESIS
-                && Mathf.Abs(delta.y) <= DELTA_Y_TOLERANCE;
+            return xzDistance <= CatchRangeMeters + HysteresisMeters
+                && Mathf.Abs(delta.y) <= DeltaYToleranceMeters;
         }
 
         private float GetPathLength(NavMeshPath path)
@@ -480,7 +589,8 @@ namespace WhisperWard.AI.FSM.States
             {
                 fsm.PublishLivenessFact("close", "Chase",
                     _terminalCause ?? "Chase-end", fsm.CurrentVirtualTime,
-                    _entryId, _lastKnownPosition, "chase-authority");
+                    _entryId, _lastKnownPosition,
+                    LivenessPositionSources.TerminalDecision);
             }
             fsm.SetGoalMode(GuardGoalMode.None);
         }

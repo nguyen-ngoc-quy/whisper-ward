@@ -56,8 +56,17 @@ namespace WhisperWard.AI.Core
             float ledgerRemainderMeters, string sessionId, long attemptEpoch,
             ulong? burstFlightHandleId, float? terminalPublicationTime = null)
         {
-            if (string.IsNullOrWhiteSpace(sourceEventId))
+            string canonicalSourceEventId = CanonicalSourceEventId(
+                sourceEventId, sourceKind);
+            if (string.IsNullOrWhiteSpace(canonicalSourceEventId))
                 throw new ArgumentException("sourceEventId");
+            if (sourceKind != NoiseSourceKind.Legacy)
+            {
+                string sourceIdError;
+                if (!NoiseSourceOrdering.TryValidateSourceEventId(
+                    canonicalSourceEventId, sourceKind, out sourceIdError))
+                    throw new ArgumentException(sourceIdError, nameof(sourceEventId));
+            }
             if (string.IsNullOrWhiteSpace(kind))
                 throw new ArgumentException("kind");
             if (string.IsNullOrWhiteSpace(publisher))
@@ -87,7 +96,7 @@ namespace WhisperWard.AI.Core
                     || !burstFlightHandleId.HasValue || burstFlightHandleId.Value == 0))
                 throw new ArgumentException("burst-envelope");
 
-            SourceEventId = sourceEventId;
+            SourceEventId = canonicalSourceEventId;
             SourceKind = sourceKind;
             Kind = kind;
             Publisher = publisher;
@@ -95,9 +104,15 @@ namespace WhisperWard.AI.Core
             Origin = origin;
             Radius = radius;
             SourceTimestamp = sourceTimestamp;
-            TerminalPublicationTime = terminalPublicationTime ?? sourceTimestamp;
-            if (!IsFinite(TerminalPublicationTime))
+            TerminalPublicationTime = sourceKind == NoiseSourceKind.Burst
+                ? terminalPublicationTime : (float?)null;
+            if (sourceKind == NoiseSourceKind.Burst
+                && (!TerminalPublicationTime.HasValue
+                    || !IsFinite(TerminalPublicationTime.Value)))
                 throw new ArgumentException("terminalPublicationTime");
+            if (sourceKind == NoiseSourceKind.Burst
+                && TerminalPublicationTime.Value < sourceTimestamp)
+                throw new ArgumentException("terminalPublicationTime-order");
             PreviousPosition = previousPosition;
             SourceState = sourceState ?? string.Empty;
             StrideTargetState = strideTargetState ?? string.Empty;
@@ -149,7 +164,25 @@ namespace WhisperWard.AI.Core
         public float SourceTimestamp { get; }
 
         /// <summary>Virtual time at which a terminal Burst becomes publishable.</summary>
-        public float TerminalPublicationTime { get; }
+        public float? TerminalPublicationTime { get; }
+
+        /// <summary>Canonical source-kind publication time used by hearing deadlines.</summary>
+        public float TPublish
+        {
+            get
+            {
+                if (SourceKind != NoiseSourceKind.Burst)
+                    return SourceTimestamp;
+                // The Burst factory contract guarantees a finite terminal
+                // publication time; a null here means an adapter bypassed the
+                // constructor's fail-closed validation. Fail closed with an
+                // explicit diagnostic instead of an unguarded .Value throw.
+                if (!TerminalPublicationTime.HasValue)
+                    throw new InvalidOperationException(
+                        "noise-source-burst-terminal-publication-time-missing");
+                return TerminalPublicationTime.Value;
+            }
+        }
 
         /// <summary>Controller position immediately before the committed step.</summary>
         public Vector3 PreviousPosition { get; }
@@ -180,9 +213,9 @@ namespace WhisperWard.AI.Core
             string publisher, Vector3 feetOrigin, float radius, float sourceTimestamp,
             string provenance)
         {
-            return new NoiseSourceRecord(sourceEventId, NoiseSourceKind.Movement,
-                "Movement", publisher, provenance, feetOrigin, radius,
-                sourceTimestamp);
+            return new NoiseSourceRecord(CanonicalSourceId("step:", sourceEventId),
+                NoiseSourceKind.Movement, "movement", publisher, provenance,
+                feetOrigin, radius, sourceTimestamp);
         }
 
         /// <summary>
@@ -199,12 +232,40 @@ namespace WhisperWard.AI.Core
                 throw new ArgumentException("strideTargetState");
             if (!IsFinitePositive(strideLengthMeters))
                 throw new ArgumentOutOfRangeException(nameof(strideLengthMeters));
-            if (!IsFinitePositive(Vector3.Distance(previousPosition, feetPosition)))
+            if (!HasPositivePlanarDisplacement(previousPosition, feetPosition))
                 throw new ArgumentException("step-displacement");
-            return new NoiseSourceRecord(stepId, NoiseSourceKind.Movement,
-                "Movement", publisher, "controller-feet", feetPosition, radius,
+            return new NoiseSourceRecord(CanonicalSourceId("step:", stepId),
+                NoiseSourceKind.Movement, "movement", publisher, "controller-feet", feetPosition, radius,
                 sourceTimestamp, previousPosition, sourceState, strideTargetState,
                 strideLengthMeters, ledgerRemainderMeters);
+        }
+
+        /// <summary>
+        /// Creates a movement source with the lifecycle envelope supplied by the
+        /// controller-owned session boundary.
+        /// </summary>
+        public static NoiseSourceRecord Movement(string sessionId,
+            long attemptEpoch, string stepId, string publisher,
+            string sourceState, string strideTargetState,
+            Vector3 previousPosition, Vector3 feetPosition,
+            float strideLengthMeters, float ledgerRemainderMeters,
+            float radius, float sourceTimestamp)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId) || attemptEpoch < 0)
+                throw new ArgumentException("movement-envelope");
+            if (!string.Equals(strideTargetState, "Walk", StringComparison.Ordinal)
+                && !string.Equals(strideTargetState, "Run", StringComparison.Ordinal))
+                throw new ArgumentException("strideTargetState");
+            if (!IsFinitePositive(strideLengthMeters))
+                throw new ArgumentOutOfRangeException(nameof(strideLengthMeters));
+            if (!HasPositivePlanarDisplacement(previousPosition, feetPosition))
+                throw new ArgumentException("step-displacement");
+            return new NoiseSourceRecord(CanonicalSourceId("step:", stepId),
+                NoiseSourceKind.Movement, "movement", publisher,
+                "controller-feet", feetPosition, radius, sourceTimestamp,
+                previousPosition, sourceState, strideTargetState,
+                strideLengthMeters, ledgerRemainderMeters, sessionId,
+                attemptEpoch, null);
         }
 
         /// <summary>
@@ -218,8 +279,8 @@ namespace WhisperWard.AI.Core
         {
             if (flightHandleId == 0)
                 throw new ArgumentOutOfRangeException(nameof(flightHandleId));
-            return new NoiseSourceRecord(flightHandleId.ToString("D"),
-                NoiseSourceKind.Burst, "Burst", publisher, provenance,
+            return new NoiseSourceRecord("flight:" + flightHandleId.ToString("D"),
+                NoiseSourceKind.Burst, "burst", publisher, provenance,
                 landingContact, radius, sourceTimestamp, landingContact,
                 string.Empty, string.Empty, 0f, 0f, sessionId, attemptEpoch,
                 flightHandleId, terminalPublicationTime);
@@ -236,17 +297,17 @@ namespace WhisperWard.AI.Core
         }
 
         /// <summary>
-        /// Compatibility adapter for old fixtures. Authoritative Burst producers
-        /// must provide the session envelope and numeric handle.
+        /// Compatibility adapter for old fixtures. The adapter intentionally
+        /// emits a Legacy record because an old call has no authoritative Burst
+        /// session envelope or numeric flight handle.
         /// </summary>
         [Obsolete("Use the envelope-aware Burst factory.")]
         public static NoiseSourceRecord Burst(string sourceEventId,
             string publisher, Vector3 landingContact, float radius,
             float sourceTimestamp, string provenance)
         {
-            return new NoiseSourceRecord(sourceEventId, NoiseSourceKind.Burst,
-                "Burst", publisher, provenance, landingContact, radius,
-                sourceTimestamp);
+            return Legacy(sourceEventId, "Burst", publisher, landingContact,
+                radius, sourceTimestamp);
         }
 
         /// <summary>
@@ -258,6 +319,34 @@ namespace WhisperWard.AI.Core
         {
             return new NoiseSourceRecord(sourceEventId, NoiseSourceKind.Legacy,
                 kind, publisher, "legacy-adapter", origin, radius, sourceTimestamp);
+        }
+
+        private static string CanonicalSourceEventId(
+            string sourceEventId, NoiseSourceKind sourceKind)
+        {
+            if (sourceKind == NoiseSourceKind.Movement)
+                return CanonicalSourceId("step:", sourceEventId);
+            if (sourceKind == NoiseSourceKind.Burst)
+                return CanonicalSourceId("flight:", sourceEventId);
+            return sourceEventId;
+        }
+
+        private static string CanonicalSourceId(string prefix, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+            return value.StartsWith(prefix, StringComparison.Ordinal)
+                ? value : prefix + value;
+        }
+
+        private static bool HasPositivePlanarDisplacement(Vector3 previous,
+            Vector3 current)
+        {
+            float dx = current.x - previous.x;
+            float dz = current.z - previous.z;
+            if (!IsFinite(dx) || !IsFinite(dz)) return false;
+            float planarMagnitude = (float)Math.Sqrt((double)dx * dx
+                + (double)dz * dz);
+            return IsFinite(planarMagnitude) && planarMagnitude > 0f;
         }
 
         private static bool IsFinite(float value)

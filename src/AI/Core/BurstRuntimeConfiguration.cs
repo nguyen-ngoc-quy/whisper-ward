@@ -13,6 +13,15 @@ namespace WhisperWard.AI.Core
         /// <summary>Canonical registry fixed-step cadence for Burst simulation.</summary>
         public const float CanonicalFixedSubstepSeconds = 1f / 120f;
 
+        /// <summary>Registry-locked projectile collision radius in metres.</summary>
+        public const float RegisteredProjectileRadiusMeters = 0.05f;
+
+        /// <summary>Registry-locked post-contact push-out epsilon in metres.</summary>
+        public const float RegisteredEpsilonContactMeters = 0.001f;
+
+        /// <summary>Registry-locked maximum Burst catch-up backlog ticks.</summary>
+        public const int RegisteredMaxBacklogTicks = 8;
+
         /// <summary>
         /// Creates a validated Burst contract from registry data. Starter
         /// values are the registry BurstThrowConfig entries; the caller owns
@@ -44,13 +53,35 @@ namespace WhisperWard.AI.Core
             ProjectileRadiusMeters = projectileRadiusMeters;
             EpsilonContactMeters = epsilonContactMeters;
             MaxBacklogTicks = maxBacklogTicks;
-            TimeoutTick = (int)Math.Ceiling(flightTimeoutSeconds / FixedSubstepSeconds);
+            TimeoutTick = (int)Math.Round(
+                flightTimeoutSeconds / FixedSubstepSeconds);
             HearingRadiusMeters = hearingRadiusMeters;
             PickupReachRadiusMeters = pickupReachRadiusMeters;
         }
 
         /// <summary>Initial launch speed magnitude in metres per second.</summary>
         public float InitialSpeedMetersPerSecond { get; }
+
+        /// <summary>
+        /// Resolves the authoritative launch velocity from the registered Burst
+        /// trajectory profile. Caller-provided velocity overrides are not accepted.
+        /// </summary>
+        public UnityEngine.Vector3 ResolveInitialVelocity(UnityEngine.Vector3 planarDirection)
+        {
+            if (!IsFinite(planarDirection))
+                throw new ArgumentException("burst-direction-invalid", nameof(planarDirection));
+            UnityEngine.Vector3 direction = new UnityEngine.Vector3(
+                planarDirection.x, 0f, planarDirection.z);
+            float magnitude = direction.magnitude;
+            if (!IsFinite(magnitude) || magnitude <= 0f)
+                throw new ArgumentException("burst-direction-invalid", nameof(planarDirection));
+            direction /= magnitude;
+            float angleRadians = LaunchAngleDegrees * (float)Math.PI / 180f;
+            return direction * (InitialSpeedMetersPerSecond *
+                (float)Math.Cos(angleRadians))
+                + UnityEngine.Vector3.up * (InitialSpeedMetersPerSecond *
+                    (float)Math.Sin(angleRadians));
+        }
 
         /// <summary>Launch angle in degrees within the F4 domain (0, 45].</summary>
         public float LaunchAngleDegrees { get; }
@@ -141,9 +172,29 @@ namespace WhisperWard.AI.Core
                 errorCode = "burst-config-timeout-invalid";
                 return false;
             }
+            double timeoutTickRatio = (double)flightTimeoutSeconds
+                / fixedSubstepSeconds;
+            if (double.IsNaN(timeoutTickRatio)
+                || double.IsInfinity(timeoutTickRatio)
+                || timeoutTickRatio > int.MaxValue
+                || Math.Abs(timeoutTickRatio - Math.Round(timeoutTickRatio))
+                    > 0.0001d)
+            {
+                errorCode = timeoutTickRatio > int.MaxValue
+                    || double.IsInfinity(timeoutTickRatio)
+                    ? "burst-config-timeout-tick-overflow"
+                    : "burst-config-timeout-not-fixed-tick";
+                return false;
+            }
             if (!IsFinitePositive(projectileRadiusMeters))
             {
                 errorCode = "burst-config-projectile-radius-invalid";
+                return false;
+            }
+            if (Math.Abs(projectileRadiusMeters
+                    - RegisteredProjectileRadiusMeters) > 0.000001f)
+            {
+                errorCode = "burst-config-projectile-radius-not-registered";
                 return false;
             }
             if (!IsFiniteNonNegative(epsilonContactMeters))
@@ -151,9 +202,20 @@ namespace WhisperWard.AI.Core
                 errorCode = "burst-config-epsilon-invalid";
                 return false;
             }
+            if (Math.Abs(epsilonContactMeters
+                    - RegisteredEpsilonContactMeters) > 0.000001f)
+            {
+                errorCode = "burst-config-epsilon-not-registered";
+                return false;
+            }
             if (maxBacklogTicks <= 0)
             {
                 errorCode = "burst-config-backlog-invalid";
+                return false;
+            }
+            if (maxBacklogTicks != RegisteredMaxBacklogTicks)
+            {
+                errorCode = "burst-config-backlog-not-registered";
                 return false;
             }
             if (!IsFinitePositive(hearingRadiusMeters))
@@ -167,6 +229,11 @@ namespace WhisperWard.AI.Core
                 return false;
             }
             return true;
+        }
+
+        private static bool IsFinite(UnityEngine.Vector3 value)
+        {
+            return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
         }
 
         private static bool IsFinite(float value)

@@ -14,7 +14,9 @@ namespace WhisperWard.AI.FSM
     public class GuardFSM : MonoBehaviour
     {
         [Header("FSM Configuration")]
+        /// <summary>Public Player Noise contract member.</summary>
         public GuardGoalMode currentGoalMode = GuardGoalMode.None;
+        /// <summary>Public Player Noise contract member.</summary>
         public string currentEntryId = null;
         [SerializeField] private string guardEid = "guard-01";
         [SerializeField] private string sessionId = "default";
@@ -34,7 +36,29 @@ namespace WhisperWard.AI.FSM
         private bool _factsSubscribed;
         private sealed class PendingLiveness
         {
+            /// <summary>Public Player Noise contract member.</summary>
             public LivenessFact Fact;
+            /// <summary>Public Player Noise contract member.</summary>
+            public int RetryCount;
+        }
+
+        private sealed class PendingSuppressionReceipt
+        {
+            /// <summary>Public Player Noise contract member.</summary>
+            public NoiseSuppressedReceipt Receipt;
+            /// <summary>Public Player Noise contract member.</summary>
+            public int RetryCount;
+        }
+
+        private sealed class PendingRelayOutcome
+        {
+            /// <summary>Public Player Noise contract member.</summary>
+            public NoiseHeardRelay Relay;
+            /// <summary>Public Player Noise contract member.</summary>
+            public RelayConsumption Consumption;
+            /// <summary>Public Player Noise contract member.</summary>
+            public float Timestamp;
+            /// <summary>Public Player Noise contract member.</summary>
             public int RetryCount;
         }
 
@@ -42,6 +66,12 @@ namespace WhisperWard.AI.FSM
         private readonly List<PendingLiveness> _pendingLiveness =
             new List<PendingLiveness>();
         private readonly HashSet<string> _consumedRelays = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _relayReservations =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _relayOutcomes =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly List<PendingRelayOutcome> _pendingRelayOutcomes =
+            new List<PendingRelayOutcome>();
         private long _decisionSequence;
         private int _maxLivenessRetries = 3;
         private float _fsmIntervalSeconds;
@@ -50,9 +80,20 @@ namespace WhisperWard.AI.FSM
             NoiseRuntimeConfiguration.RegisteredNoiseRecommitCooldownSeconds;
         private float _noiseRecommitCooldownUntil;
         private string _lastLivenessFailureCode = string.Empty;
+        private string _lastRelayOutcomeFailureCode = string.Empty;
         private bool _suppressStateLiveness;
         private bool _livenessPromotionPending;
         private string _livenessPromotionEntryId = string.Empty;
+        private ISuppressionVisibilityPolicy _suppressionVisibilityPolicy;
+        private Func<Vector3, bool> _noiseEpisodeAreaTest;
+        private readonly HashSet<string> _suppressionReceipts =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly List<PendingSuppressionReceipt> _pendingSuppressionReceipts =
+            new List<PendingSuppressionReceipt>();
+        private string _lastSuppressionReceiptFailureCode = string.Empty;
+        private int _maxSuppressionReceiptRetries = 3;
+        private float _microTellCooldownUntil;
+        private float _microTellCooldownSeconds = 0.5f;
 
         // Cached states avoid allocations during gameplay.
         private readonly PatrolState _patrolState = new PatrolState();
@@ -68,7 +109,7 @@ namespace WhisperWard.AI.FSM
         {
             if (_phaseDriven && _phaseCoordinator != null)
             {
-                _phaseCoordinator.RegisterFsmParticipant(ProcessTick);
+                _phaseCoordinator.RegisterFsmParticipant("guard-fsm:" + guardEid, 10, ProcessTick);
                 // A disable cycle unsubscribed the fact token; the participant
                 // must resume receiving coordinator-phase relays with it.
                 SubscribeFacts();
@@ -151,11 +192,12 @@ namespace WhisperWard.AI.FSM
             // explicitly; only the non-driven path binds the clock here.
             SubscribeFacts();
             if (_phaseDriven)
-                _phaseCoordinator.RegisterFsmParticipant(ProcessTick);
+                _phaseCoordinator.RegisterFsmParticipant("guard-fsm:" + guardEid, 10, ProcessTick);
             else if (wasBound)
                 BindRuntime(_eventBus, _clock);
         }
 
+        /// <summary>Public API member for the Player Noise contract.</summary>
         public void ConfigureNoiseResponseProfile(NoiseResponseProfile profile)
         {
             if (_isBound && noiseResponseProfile != profile)
@@ -186,6 +228,31 @@ namespace WhisperWard.AI.FSM
             _maxLivenessRetries = maxRetries;
         }
 
+        /// <summary>Injects the one-query visibility policy for suppression receipts.</summary>
+        public void ConfigureSuppressionVisibilityPolicy(
+            ISuppressionVisibilityPolicy policy)
+        {
+            _suppressionVisibilityPolicy = policy;
+        }
+
+        /// <summary>
+        /// Injects the registered live-episode area predicate used to classify
+        /// suppressed relays. The predicate receives the relay's authoritative
+        /// raw origin; a missing predicate cannot claim an out-of-area result.
+        /// </summary>
+        public void ConfigureNoiseEpisodeAreaTest(Func<Vector3, bool> areaTest)
+        {
+            _noiseEpisodeAreaTest = areaTest;
+        }
+
+        /// <summary>Configures deterministic spacing between visible micro-tells.</summary>
+        public void ConfigureMicroTellCooldown(float seconds)
+        {
+            if (float.IsNaN(seconds) || float.IsInfinity(seconds) || seconds < 0f)
+                throw new ArgumentOutOfRangeException(nameof(seconds));
+            _microTellCooldownSeconds = seconds;
+        }
+
         /// <summary>
         /// Applies the registered vision/FSM cadence. Fact consumption remains
         /// boundary-driven, while state timers and navigation updates run only at
@@ -206,6 +273,22 @@ namespace WhisperWard.AI.FSM
             get { return _lastLivenessFailureCode; }
         }
 
+        /// <summary>Stable terminal code for relay-outcome publication.</summary>
+        public string LastRelayOutcomeFailureCode
+        {
+            get { return _lastRelayOutcomeFailureCode; }
+        }
+
+        /// <summary>
+        /// Stable terminal code for the latest suppressed-receipt publication
+        /// failure. An empty value means every receipt was accepted, duplicated,
+        /// or is still legitimately staged for retry.
+        /// </summary>
+        public string LastSuppressionReceiptFailureCode
+        {
+            get { return _lastSuppressionReceiptFailureCode; }
+        }
+
         /// <summary>
         /// Applies a lifecycle-owned session or epoch barrier and discards queued
         /// facts and relay reservations from the previous generation.
@@ -218,15 +301,17 @@ namespace WhisperWard.AI.FSM
                 throw new ArgumentOutOfRangeException(nameof(activeEpoch));
 
             string staleEntryId = currentEntryId;
+            Vector3 stalePosition = GetLastAuthoritativeEpisodePosition();
+            float staleTimestamp = _clock == null ? 0f : _clock.CurrentTime;
             // SessionBoundaryService invokes this callback before advancing the bus.
-            // Publish the close while the FSM and transport still share the old
-            // envelope; the barrier then marks it stale with the rest of old work.
+            // The stale close is admitted in the old generation exactly once; the
+            // bus retains that handoff across the barrier instead of relabelling it.
             if (!string.IsNullOrWhiteSpace(staleEntryId)
                 && _eventBus != null)
             {
-                PublishLivenessFact("close", GetLivenessTier(),
-                    "epoch-transition-stale", _clock == null ? 0f : _clock.CurrentTime,
-                    staleEntryId);
+                PublishLivenessFact("close", GetLivenessTier(), "stale",
+                    staleTimestamp, staleEntryId, stalePosition,
+                    LivenessPositionSources.LastAuthoritativeEpisodePosition);
             }
             sessionId = activeSessionId;
             attemptEpoch = activeEpoch;
@@ -240,19 +325,52 @@ namespace WhisperWard.AI.FSM
 
         private void ClearBoundaryState()
         {
-            if (_pendingLiveness.Count > 0)
+            // A stale close staged for retry is part of the previous generation's
+            // contract. It is never silently dropped: retained stale-close
+            // handoffs keep their original envelope, and any other pending
+            // liveness is closed with an explicit fail-closed code.
+            bool retainedStaleClose = false;
+            for (int i = 0; i < _pendingLiveness.Count; i++)
             {
+                if (_pendingLiveness[i].Fact is LivenessFact fact
+                    && fact.RetainAcrossGenerationBarrier)
+                {
+                    retainedStaleClose = true;
+                    continue;
+                }
                 _lastLivenessFailureCode =
                     "fsm-liveness-boundary-discarded";
+                break;
+            }
+            if (!retainedStaleClose)
                 _pendingLiveness.Clear();
+            else
+            {
+                for (int i = _pendingLiveness.Count - 1; i >= 0; i--)
+                {
+                    LivenessFact fact = _pendingLiveness[i].Fact as LivenessFact;
+                    if (fact == null || !fact.RetainAcrossGenerationBarrier)
+                        _pendingLiveness.RemoveAt(i);
+                }
+            }
+            if (_pendingSuppressionReceipts.Count > 0)
+            {
+                _lastSuppressionReceiptFailureCode =
+                    "fsm-suppression-receipt-boundary-discarded";
+                _pendingSuppressionReceipts.Clear();
             }
             _pendingFacts.Clear();
             _consumedRelays.Clear();
+            _relayReservations.Clear();
+            _relayOutcomes.Clear();
+            _pendingRelayOutcomes.Clear();
             _decisionSequence = 0;
             _fsmCadenceAccumulator = 0f;
             _noiseRecommitCooldownUntil = 0f;
             _livenessPromotionPending = false;
             _livenessPromotionEntryId = string.Empty;
+            _suppressionReceipts.Clear();
+            _microTellCooldownUntil = 0f;
             currentEntryId = null;
         }
 
@@ -308,7 +426,9 @@ namespace WhisperWard.AI.FSM
         /// </summary>
         public void ProcessTick(long tick, float delta)
         {
+            FlushPendingRelayOutcomes();
             FlushPendingLiveness();
+            FlushPendingSuppressionReceipts();
             ProcessPendingFacts();
             if (_currentState == null || _isTransitioning)
                 return;
@@ -366,9 +486,30 @@ namespace WhisperWard.AI.FSM
         {
             int compare = GetFactRank(left).CompareTo(GetFactRank(right));
             if (compare != 0) return compare;
-            compare = left.Timestamp.CompareTo(right.Timestamp);
-            if (compare != 0) return compare;
-            return string.Compare(left.Identity, right.Identity, StringComparison.Ordinal);
+
+            NoiseHeardRelay leftRelay = left as NoiseHeardRelay;
+            NoiseHeardRelay rightRelay = right as NoiseHeardRelay;
+            if (leftRelay != null && rightRelay != null)
+            {
+                compare = leftRelay.TPublish.CompareTo(rightRelay.TPublish);
+                if (compare != 0) return compare;
+                compare = leftRelay.SourceEventClassRank.CompareTo(
+                    rightRelay.SourceEventClassRank);
+                if (compare != 0) return compare;
+                compare = NoiseSourceOrdering.CompareSourceEventIds(
+                    leftRelay.SourceEventId, rightRelay.SourceEventId);
+                if (compare != 0) return compare;
+                compare = leftRelay.FactId.CompareTo(rightRelay.FactId);
+                if (compare != 0) return compare;
+            }
+            else
+            {
+                compare = left.Timestamp.CompareTo(right.Timestamp);
+                if (compare != 0) return compare;
+            }
+
+            return string.Compare(left.Identity, right.Identity,
+                StringComparison.Ordinal);
         }
 
         private static int GetFactRank(IEvent fact)
@@ -412,32 +553,267 @@ namespace WhisperWard.AI.FSM
 
             string relayKey = relay.SessionId + "|" + relay.AttemptEpoch + "|"
                 + relay.GuardEid + "|" + relay.FactId.ToString("D");
-            return _consumedRelays.Add(relayKey);
+            if (_consumedRelays.Contains(relayKey)
+                || _relayReservations.Contains(relayKey)
+                || _relayOutcomes.Contains(relayKey))
+                return false;
+            return _relayReservations.Add(relayKey);
         }
 
-        public void PublishRelayOutcome(NoiseHeardRelay relay, RelayConsumption consumption)
+        /// <summary>Public API member for the Player Noise contract.</summary>
+        public EventPublishResult PublishRelayOutcome(NoiseHeardRelay relay,
+            RelayConsumption consumption)
         {
-            if (relay == null || _eventBus == null) return;
+            if (relay == null || _eventBus == null
+                || !IsCurrentEnvelope(relay)
+                || !string.Equals(relay.GuardEid, GuardEid, StringComparison.Ordinal))
+                return EventPublishResult.Rejected("fsm-relay-outcome-invalid");
+
+            string outcomeKey = sessionId + "|" + attemptEpoch + "|"
+                + GuardEid + "|" + relay.FactId.ToString("D");
+            if (_relayOutcomes.Contains(outcomeKey))
+                return EventPublishResult.Duplicate();
+
             float timestamp = _clock == null ? relay.Timestamp : _clock.CurrentTime;
-            var outcome = new NoiseConsumptionOutcome(sessionId, attemptEpoch,
-                relay.FactId, GuardEid, relay.EntryId, consumption, timestamp);
-            _eventBus.Publish(outcome);
-            if (consumption == RelayConsumption.Ignored)
+            PendingRelayOutcome pending = new PendingRelayOutcome
             {
-                PublishSuppressedReceipt(relay, "fsm-suppressed", false, false,
-                    timestamp);
+                Relay = relay,
+                Consumption = consumption,
+                Timestamp = timestamp
+            };
+            EventPublishResult result = TryPublishRelayOutcome(pending);
+            if (result.Admission == EventAdmission.Retry)
+            {
+                _pendingRelayOutcomes.Add(pending);
+            }
+            return result;
+        }
+
+        private EventPublishResult TryPublishRelayOutcome(PendingRelayOutcome pending)
+        {
+            var outcome = new NoiseConsumptionOutcome(sessionId, attemptEpoch,
+                pending.Relay.FactId, GuardEid, pending.Relay.EntryId,
+                pending.Consumption, pending.Timestamp);
+            EventPublishResult result = _eventBus.Publish(outcome);
+            if (result.Admission == EventAdmission.Retry)
+            {
+                pending.RetryCount = Math.Max(pending.RetryCount + 1,
+                    result.RetryCount);
+                return result;
+            }
+            string outcomeKey = sessionId + "|" + attemptEpoch + "|"
+                + GuardEid + "|" + pending.Relay.FactId.ToString("D");
+            _relayReservations.Remove(outcomeKey);
+            _relayOutcomes.Add(outcomeKey);
+            _consumedRelays.Add(outcomeKey);
+            if (result.Admission == EventAdmission.Rejected)
+            {
+                _lastRelayOutcomeFailureCode = string.IsNullOrWhiteSpace(result.Code)
+                    ? "fsm-relay-outcome-rejected" : result.Code;
+                return result;
+            }
+            if (pending.Consumption == RelayConsumption.Ignored)
+                PublishSuppressionForAcceptedOutcome(pending);
+            return result;
+        }
+
+        private void PublishSuppressionForAcceptedOutcome(PendingRelayOutcome pending)
+        {
+            NoiseHeardRelay relay = pending.Relay;
+            string reason = GetSuppressionReason(relay);
+            bool eligible = IsVisibleSuppressionEligible();
+            bool visible = false;
+            bool microTell = false;
+            string visibilityQueryId = string.Empty;
+            string visibilityQueryProvenance = string.Empty;
+            if (!eligible)
+            {
+                visibilityQueryId = "not-applicable";
+                visibilityQueryProvenance = "not-performed:state-exclusion";
+            }
+            else if (_suppressionVisibilityPolicy != null)
+            {
+                string queryId = "visibility:" + sessionId + ":"
+                    + attemptEpoch + ":" + GuardEid + ":"
+                    + relay.FactId.ToString("D");
+                var query = new SuppressionVisibilityQuery(queryId,
+                    relay.AuthoritativeOrigin, "noise-relay-origin");
+                var typedPolicy = _suppressionVisibilityPolicy
+                    as ITypedSuppressionVisibilityPolicy;
+                SuppressionVisibilityResult visibility = typedPolicy != null
+                    ? typedPolicy.Evaluate(query)
+                    : new SuppressionVisibilityResult(
+                        _suppressionVisibilityPolicy.IsVisibleToPlayer(relay.Position),
+                        queryId, "legacy-adapter");
+                visible = visibility.Visible;
+                visibilityQueryId = visibility.QueryId;
+                visibilityQueryProvenance = visibility.QueryProvenance;
+                if (visible && pending.Timestamp >= _microTellCooldownUntil)
+                {
+                    microTell = true;
+                    _microTellCooldownUntil = pending.Timestamp
+                        + _microTellCooldownSeconds;
+                }
+            }
+            else
+            {
+                // An eligible suppression decision without an injected visibility
+                // policy is an unconfigured consumer, not a silent no-query pass.
+                // The receipt records the missing policy explicitly instead of
+                // shipping empty provenance; no micro-tell is emitted.
+                visibilityQueryId = "not-applicable";
+                visibilityQueryProvenance = "not-performed:policy-unavailable";
+            }
+            PublishSuppressedReceipt(relay, reason, visible, microTell,
+                pending.Timestamp, visibilityQueryId, visibilityQueryProvenance);
+        }
+
+        private void FlushPendingRelayOutcomes()
+        {
+            for (int i = 0; i < _pendingRelayOutcomes.Count;)
+            {
+                PendingRelayOutcome pending = _pendingRelayOutcomes[i];
+                EventPublishResult result = TryPublishRelayOutcome(pending);
+                if (result.Admission == EventAdmission.Retry)
+                {
+                    if (pending.RetryCount > _maxLivenessRetries)
+                    {
+                        _lastRelayOutcomeFailureCode =
+                            "fsm-relay-outcome-retry-exhausted";
+                        string key = sessionId + "|" + attemptEpoch + "|"
+                            + GuardEid + "|"
+                            + pending.Relay.FactId.ToString("D");
+                        _relayReservations.Remove(key);
+                        _relayOutcomes.Add(key);
+                        _consumedRelays.Add(key);
+                        _pendingRelayOutcomes.RemoveAt(i);
+                    }
+                    else break;
+                    continue;
+                }
+                _pendingRelayOutcomes.RemoveAt(i);
             }
         }
 
-        /// <summary>Publishes one immutable presentation receipt for suppressed noise.</summary>
+        private string GetSuppressionReason(NoiseHeardRelay relay)
+        {
+            // State exclusion has precedence over all timing and geometry
+            // classifications. It deliberately produces no visibility query.
+            if (_currentState == _chaseState
+                || currentGoalMode == GuardGoalMode.HideSpotFront)
+                return "state-exclusion";
+            if (_clock != null && CurrentVirtualTime < _noiseRecommitCooldownUntil)
+                return "cooldown";
+            if (_noiseEpisodeAreaTest != null
+                && relay != null
+                && !_noiseEpisodeAreaTest(relay.AuthoritativeOrigin))
+                return "out-of-area";
+            return "out-of-window";
+        }
+
+        private bool IsVisibleSuppressionEligible()
+        {
+            // Chase, HideSpotFront, stale, epoch-invalid, and duplicate relays
+            // never enter the player-facing visibility query.
+            return _currentState != _chaseState
+                && currentGoalMode != GuardGoalMode.HideSpotFront;
+        }
+
+        /// <summary>
+        /// Publishes one immutable presentation receipt for suppressed noise.
+        /// Exactly-once per (session, epoch, guard, fact): a bus Retry retains
+        /// the receipt for a later flush instead of silently dropping it, and a
+        /// terminal Rejection is recorded as a stable failure code.
+        /// </summary>
         public void PublishSuppressedReceipt(NoiseHeardRelay relay, string reason,
             bool visibleToPlayer, bool microTellEmitted, float timestamp)
         {
+            PublishSuppressedReceipt(relay, reason, visibleToPlayer,
+                microTellEmitted, timestamp, string.Empty, string.Empty);
+        }
+
+        /// <summary>Public API member for the Player Noise contract.</summary>
+        public void PublishSuppressedReceipt(NoiseHeardRelay relay, string reason,
+            bool visibleToPlayer, bool microTellEmitted, float timestamp,
+            string visibilityQueryId, string visibilityQueryProvenance)
+        {
             if (relay == null || _eventBus == null) return;
+            string receiptKey = sessionId + "|" + attemptEpoch + "|"
+                + GuardEid + "|" + relay.FactId.ToString("D");
+            if (!_suppressionReceipts.Add(receiptKey)) return;
             var receipt = new NoiseSuppressedReceipt(sessionId, attemptEpoch,
                 relay.FactId, GuardEid, relay.EntryId, reason,
-                visibleToPlayer, microTellEmitted, timestamp);
-            _eventBus.Publish(receipt);
+                visibleToPlayer, microTellEmitted, timestamp,
+                visibilityQueryId, visibilityQueryProvenance,
+                relay.Kind, relay.SourceEventId, relay.TPublish);
+
+            // A retrying predecessor stays staged ahead of this receipt, matching
+            // the write-side ordering discipline of pending liveness facts.
+            FlushPendingSuppressionReceipts();
+            if (_pendingSuppressionReceipts.Count > 0)
+            {
+                if (_pendingSuppressionReceipts.Count >= 32)
+                {
+                    _lastSuppressionReceiptFailureCode =
+                        "fsm-suppression-receipt-queue-overflow-rejected";
+                    return;
+                }
+                _pendingSuppressionReceipts.Add(
+                    new PendingSuppressionReceipt { Receipt = receipt });
+                return;
+            }
+
+            EventPublishResult result = _eventBus.Publish(receipt);
+            if (result.Admission == EventAdmission.Retry)
+            {
+                _pendingSuppressionReceipts.Add(
+                    new PendingSuppressionReceipt
+                    {
+                        Receipt = receipt,
+                        RetryCount = result.RetryCount
+                    });
+            }
+            else if (result.Admission == EventAdmission.Rejected)
+            {
+                _lastSuppressionReceiptFailureCode =
+                    string.IsNullOrWhiteSpace(result.Code)
+                        ? "fsm-suppression-receipt-rejected"
+                        : result.Code;
+            }
+        }
+
+        private void FlushPendingSuppressionReceipts()
+        {
+            for (int i = 0; i < _pendingSuppressionReceipts.Count;)
+            {
+                PendingSuppressionReceipt pending = _pendingSuppressionReceipts[i];
+                EventPublishResult result = _eventBus.Publish(pending.Receipt);
+                if (result.Admission == EventAdmission.Retry)
+                {
+                    pending.RetryCount = Math.Max(pending.RetryCount + 1,
+                        result.RetryCount);
+                    if (pending.RetryCount > _maxSuppressionReceiptRetries)
+                    {
+                        _lastSuppressionReceiptFailureCode =
+                            "fsm-suppression-receipt-retry-exhausted";
+                        _pendingSuppressionReceipts.RemoveAt(i);
+                    }
+                    else
+                    {
+                        // Ordering: a still-blocked head blocks the queue; later
+                        // receipts must not overtake it.
+                        break;
+                    }
+                    continue;
+                }
+
+                if (result.Admission == EventAdmission.Rejected)
+                    _lastSuppressionReceiptFailureCode =
+                        string.IsNullOrWhiteSpace(result.Code)
+                            ? "fsm-suppression-receipt-rejected"
+                            : result.Code;
+                _pendingSuppressionReceipts.RemoveAt(i);
+            }
         }
 
         /// <summary>
@@ -455,6 +831,7 @@ namespace WhisperWard.AI.FSM
             _eventBus.Publish(record);
         }
 
+        /// <summary>Public API member for the Player Noise contract.</summary>
         public void TransitionTo(IGuardState newState)
         {
             if (newState == null || _currentState == newState) return;
@@ -467,18 +844,26 @@ namespace WhisperWard.AI.FSM
             Debug.Log($"[GuardFSM] Transitioned to {newState.StateName}");
         }
 
+        /// <summary>Public API member for the Player Noise contract.</summary>
         public PatrolState GetPatrolState() { return _patrolState; }
+        /// <summary>Public API member for the Player Noise contract.</summary>
         public InvestigateState GetInvestigateState() { return _investigateState; }
+        /// <summary>Public API member for the Player Noise contract.</summary>
         public ChaseState GetChaseState() { return _chaseState; }
+        /// <summary>Public Player Noise contract member.</summary>
         public IGuardState CurrentState { get { return _currentState; } }
+        /// <summary>Public Player Noise contract member.</summary>
         public string GuardEid { get { return guardEid; } }
+        /// <summary>Public Player Noise contract member.</summary>
         public string SessionId { get { return sessionId; } }
+        /// <summary>Public Player Noise contract member.</summary>
         public long AttemptEpoch { get { return attemptEpoch; } }
         /// <summary>Current injected virtual time for authoritative liveness records.</summary>
         public float CurrentVirtualTime
         {
             get { return _clock == null ? 0f : _clock.CurrentTime; }
         }
+        /// <summary>Public Player Noise contract member.</summary>
         public NoiseResponseProfile NoiseResponseProfile { get { return noiseResponseProfile; } }
 
         /// <summary>Starts the post-resolution cooldown for fresh noise relays.</summary>
@@ -504,7 +889,8 @@ namespace WhisperWard.AI.FSM
             string cause, float sourceTimestamp, string entryId)
         {
             return PublishLivenessFact(operation, tier, cause, sourceTimestamp,
-                entryId, transform.position, "guard-authoritative-position");
+                entryId, transform.position,
+                LivenessPositionSources.GuardTransform);
         }
 
         /// <summary>Publishes liveness with the authoritative position datum.</summary>
@@ -602,6 +988,15 @@ namespace WhisperWard.AI.FSM
             return _currentState == _chaseState ? "Chase" : "Investigate";
         }
 
+        private Vector3 GetLastAuthoritativeEpisodePosition()
+        {
+            if (_currentState == _investigateState)
+                return _investigateState.AuthoritativeEpisodePosition;
+            if (_currentState == _chaseState)
+                return _chaseState.AuthoritativeEpisodePosition;
+            return transform.position;
+        }
+
         /// <summary>Indicates that a lifecycle reset suppresses state exit facts.</summary>
         public bool IsBoundaryResetting { get { return _suppressStateLiveness; } }
 
@@ -615,6 +1010,7 @@ namespace WhisperWard.AI.FSM
             currentEntryId = entryId;
         }
 
+        /// <summary>Public API member for the Player Noise contract.</summary>
         public bool IsLivenessPromotionPending(string entryId)
         {
             return _livenessPromotionPending
@@ -622,12 +1018,14 @@ namespace WhisperWard.AI.FSM
                     StringComparison.Ordinal);
         }
 
+        /// <summary>Public API member for the Player Noise contract.</summary>
         public void ConsumeLivenessPromotion()
         {
             _livenessPromotionPending = false;
             _livenessPromotionEntryId = string.Empty;
         }
 
+        /// <summary>Public API member for the Player Noise contract.</summary>
         public void SetGoalMode(GuardGoalMode mode)
         {
             currentGoalMode = mode;

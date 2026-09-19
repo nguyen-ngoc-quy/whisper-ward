@@ -36,6 +36,27 @@ namespace WhisperWard.AI.Core
     }
 
     /// <summary>
+    /// Optional canonical source ordering supplied by raw fact events. The bus
+    /// uses it instead of publisher or listener arrival order when present.
+    /// </summary>
+    public interface IEventSourceOrdering
+    {
+        float SourceTimestamp { get; }
+        int SourceEventClassRank { get; }
+        string SourceEventId { get; }
+        ulong SourceFactId { get; }
+    }
+
+    /// <summary>
+    /// Marks one lifecycle stale-close handoff that must survive the generation
+    /// barrier in its original session and attempt epoch.
+    /// </summary>
+    public interface IStaleGenerationHandoff
+    {
+        bool RetainAcrossGenerationBarrier { get; }
+    }
+
+    /// <summary>
     /// Immutable transport envelope. The payload owns its identity; the bus never
     /// allocates a gameplay fact or episode identifier.
     /// </summary>

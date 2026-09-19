@@ -7,7 +7,7 @@ namespace WhisperWard.AI.FSM
     /// Represents an authored patrol route for a guard.
     /// </summary>
     [System.Serializable]
-    public class PatrolRoute
+    public class PatrolRoute : MonoBehaviour
     {
         public List<Waypoint> waypoints = new List<Waypoint>();
 

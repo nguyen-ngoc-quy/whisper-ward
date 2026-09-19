@@ -21,12 +21,33 @@ namespace WhisperWard.AI.Core
             new Dictionary<long, Action<long, float>>();
         private long _nextSubscription = 1;
         private float _accumulator;
+        private readonly float _maxFrameDeltaSeconds;
 
         public VirtualTickClockService(float tickInterval = CanonicalTickInterval)
+            : this(tickInterval, NoiseRuntimeConfiguration.RegisteredMaxFrameDeltaSeconds)
         {
-            if (tickInterval <= 0f || float.IsNaN(tickInterval) || float.IsInfinity(tickInterval))
+        }
+
+        /// <summary>Creates a clock with registry-backed frame-delta clamping.</summary>
+        public VirtualTickClockService(float tickInterval, float maxFrameDeltaSeconds)
+        {
+            if (tickInterval <= 0f || float.IsNaN(tickInterval)
+                || float.IsInfinity(tickInterval))
                 throw new ArgumentOutOfRangeException(nameof(tickInterval));
-            TickInterval = tickInterval;
+            if (Mathf.Abs(tickInterval - CanonicalTickInterval) > 0.000001f)
+                throw new ArgumentException(
+                    "clock-cadence-must-be-canonical-1-120", nameof(tickInterval));
+            if (maxFrameDeltaSeconds <= 0f || float.IsNaN(maxFrameDeltaSeconds)
+                || float.IsInfinity(maxFrameDeltaSeconds))
+                throw new ArgumentOutOfRangeException(nameof(maxFrameDeltaSeconds));
+            if (Mathf.Abs(maxFrameDeltaSeconds
+                    - NoiseRuntimeConfiguration.RegisteredMaxFrameDeltaSeconds)
+                > 0.000001f)
+                throw new ArgumentException(
+                    "clock-max-frame-delta-not-registered",
+                    nameof(maxFrameDeltaSeconds));
+            TickInterval = CanonicalTickInterval;
+            _maxFrameDeltaSeconds = maxFrameDeltaSeconds;
         }
 
         public long CurrentTick { get; private set; }
@@ -71,14 +92,15 @@ namespace WhisperWard.AI.Core
 
         public void Advance(float gameplayDelta)
         {
-            if (IsPaused || gameplayDelta <= 0f) return;
-            if (float.IsNaN(gameplayDelta) || float.IsInfinity(gameplayDelta))
-                throw new ArgumentException("Gameplay delta must be finite", nameof(gameplayDelta));
+            if (float.IsNaN(gameplayDelta) || float.IsInfinity(gameplayDelta)
+                || gameplayDelta < 0f)
+                throw new ArgumentException("Gameplay delta must be finite and non-negative",
+                    nameof(gameplayDelta));
+            if (IsPaused || gameplayDelta == 0f) return;
 
-            // Clamp per-call advance to registered max_frame_delta_s (entities.yaml)
-            // with a clock-delta-clamped diagnostic; an anomalous first-frame delta
-            // can never enqueue a large catch-up batch at once.
-            const float maxFrameDelta = 0.0667f; // s — matches max_frame_delta_s (entities.yaml:1003-1006)
+            // Clamp per-call advance to the validated registry maximum; an
+            // anomalous first-frame delta can never enqueue a large catch-up batch.
+            float maxFrameDelta = _maxFrameDeltaSeconds;
             if (gameplayDelta > maxFrameDelta)
             {
                 gameplayDelta = maxFrameDelta;

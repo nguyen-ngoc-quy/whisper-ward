@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.AI;
+using WhisperWard.AI.Core;
 
 namespace WhisperWard.AI.Navigation
 {
@@ -17,11 +18,47 @@ namespace WhisperWard.AI.Navigation
         [SerializeField] private float stoppingDistance;
 
         private NavMeshAgent _agent;
+        private NoiseRuntimeConfiguration _runtimeConfiguration;
 
         private void Awake()
         {
             _agent = GetComponent<NavMeshAgent>();
-            _agent.stoppingDistance = stoppingDistance;
+            _agent.stoppingDistance = NoiseRuntimeConfiguration
+                .RegisteredStoppingDistanceMeters;
+        }
+
+        /// <summary>
+        /// Injects the immutable registry-backed navigation tuning. Serialized
+        /// fields remain authoring-only compatibility values and are not runtime
+        /// authority.
+        /// </summary>
+        public void ConfigureRuntime(NoiseRuntimeConfiguration configuration)
+        {
+            _runtimeConfiguration = configuration
+                ?? throw new System.ArgumentNullException(nameof(configuration));
+            if (_agent != null)
+                _agent.stoppingDistance = _runtimeConfiguration.StoppingDistanceMeters;
+        }
+
+        private float PatrolSpeed
+        {
+            get { return _runtimeConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredPatrolSpeedMetersPerSecond
+                : _runtimeConfiguration.PatrolSpeedMetersPerSecond; }
+        }
+
+        private float InvestigateSpeed
+        {
+            get { return _runtimeConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredInvestigateSpeedMetersPerSecond
+                : _runtimeConfiguration.InvestigateSpeedMetersPerSecond; }
+        }
+
+        private float ChaseSpeed
+        {
+            get { return _runtimeConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredChaseSpeedMetersPerSecond
+                : _runtimeConfiguration.ChaseSpeedMetersPerSecond; }
         }
 
         public void SetSpeed(float speed)
@@ -31,9 +68,9 @@ namespace WhisperWard.AI.Navigation
             _agent.speed = speed;
         }
 
-        public void SetPatrolSpeed() { SetSpeed(patrolSpeed); }
-        public void SetInvestigateSpeed() { SetSpeed(investigateSpeed); }
-        public void SetChaseSpeed() { SetSpeed(chaseSpeed); }
+        public void SetPatrolSpeed() { SetSpeed(PatrolSpeed); }
+        public void SetInvestigateSpeed() { SetSpeed(InvestigateSpeed); }
+        public void SetChaseSpeed() { SetSpeed(ChaseSpeed); }
 
         public void MoveTo(Vector3 destination)
         {
@@ -42,11 +79,56 @@ namespace WhisperWard.AI.Navigation
 
         public bool HasReachedDestination()
         {
-            // Check if we are close to the target and not currently calculating a path
-            return !_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance;
+            return !_agent.pathPending
+                && _agent.remainingDistance <= _agent.stoppingDistance;
+        }
+
+        /// <summary>
+        /// Observes the Investigate arrival predicate. Arrival is based on the
+        /// sampled target's XZ distance and is evaluated before path-end so a tie
+        /// can never be classified as path-end.
+        /// </summary>
+        public bool HasReachedArrival(Vector3 target, float toleranceMeters)
+        {
+            if (_agent == null || _agent.pathPending
+                || !IsFinite(target) || !IsFinite(toleranceMeters)
+                || toleranceMeters < 0f)
+                return false;
+            Vector3 delta = target - transform.position;
+            float xzDistance = new Vector2(delta.x, delta.z).magnitude;
+            return IsFinite(xzDistance) && xzDistance <= toleranceMeters;
+        }
+
+        /// <summary>
+        /// Observes one path-end candidate. The caller supplies the registered
+        /// tolerances and consecutive-tick policy; this adapter only reports the
+        /// current agent observation and never starts an FSM timer.
+        /// </summary>
+        public bool HasPathEndObservation(float remainingToleranceMeters,
+            float speedToleranceMetersPerSecond)
+        {
+            if (_agent == null || _agent.pathPending
+                || !IsFinite(remainingToleranceMeters)
+                || !IsFinite(speedToleranceMetersPerSecond)
+                || remainingToleranceMeters < 0f
+                || speedToleranceMetersPerSecond < 0f)
+                return false;
+            return _agent.remainingDistance <= _agent.stoppingDistance
+                + remainingToleranceMeters
+                && _agent.velocity.magnitude <= speedToleranceMetersPerSecond;
         }
 
         public Vector3 GetCurrentPosition() => transform.position;
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        private static bool IsFinite(Vector3 value)
+        {
+            return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
+        }
 
         public NavMeshPath CalculatePathTo(Vector3 destination)
         {

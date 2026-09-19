@@ -99,7 +99,8 @@ namespace WhisperWard.AI.FSM.States
                     chaseState.Init(hideBreak.EntryId, "hide-entry",
                         hideBreak.SpotPosition, true,
                         hideBreak.HasSpotFrontPosition
-                            ? hideBreak.SpotFrontPosition : (Vector3?)null);
+                            ? hideBreak.SpotFrontPosition : (Vector3?)null,
+                        hideBreak.Timestamp);
                     fsm.TransitionTo(chaseState);
                 }
                 else
@@ -108,7 +109,8 @@ namespace WhisperWard.AI.FSM.States
                     investigateState.InitHideEntry(hideBreak.EntryId,
                         hideBreak.SpotPosition, hideBreak.ResidualR,
                         hideBreak.HasSpotFrontPosition
-                            ? hideBreak.SpotFrontPosition : (Vector3?)null);
+                            ? hideBreak.SpotFrontPosition : (Vector3?)null,
+                        hideBreak.Timestamp);
                     fsm.TransitionTo(investigateState);
                 }
                 return;
@@ -118,7 +120,7 @@ namespace WhisperWard.AI.FSM.States
             {
                 var investigateState = fsm.GetInvestigateState();
                 investigateState.Init(capEvt.EntryId, capEvt.Position,
-                    "cap-forced", 0f);
+                    "cap-forced", 0f, capEvt.Timestamp);
                 fsm.TransitionTo(investigateState);
                 return;
             }
@@ -127,7 +129,7 @@ namespace WhisperWard.AI.FSM.States
             {
                 var investigateState = fsm.GetInvestigateState();
                 investigateState.Init(confirmEvt.EntryId, fsm.transform.position,
-                    "threshold", confirmEvt.ResidualR);
+                    "threshold", confirmEvt.ResidualR, confirmEvt.Timestamp);
                 fsm.TransitionTo(investigateState);
                 return;
             }
@@ -156,7 +158,8 @@ namespace WhisperWard.AI.FSM.States
             if (evt is ChaseReached chaseEvt)
             {
                 var chaseState = fsm.GetChaseState();
-                chaseState.Init(chaseEvt.EntryId, "threshold", chaseEvt.Position);
+                chaseState.Init(chaseEvt.EntryId, "threshold",
+                    chaseEvt.Position, false, null, chaseEvt.Timestamp);
                 fsm.TransitionTo(chaseState);
             }
         }

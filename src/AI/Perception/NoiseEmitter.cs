@@ -41,16 +41,34 @@ namespace WhisperWard.AI.Perception
         private readonly HashSet<string> _invalidatedSources =
             new HashSet<string>(StringComparer.Ordinal);
         private string _factSessionId;
-        private bool _hasCommittedOrder;
-        private float _lastSourceTimestamp;
-        private int _lastSourceRank;
-        private string _lastSourceEventId;
+        private readonly float _walkRadiusMeters;
+        private readonly float _runRadiusMeters;
+        private bool _hasCommittedMovementOrder;
+        private float _lastMovementTimestamp;
+        private int _lastMovementRank;
+        private string _lastMovementEventId;
         private ulong _nextFactId = 1;
 
         /// <summary>Creates an emitter bound to one session-scoped event bus.</summary>
         public NoiseEmitter(IEventBus eventBus)
+            : this(eventBus, NoiseRuntimeConfiguration.RegisteredWalkNoiseRadiusMeters,
+                NoiseRuntimeConfiguration.RegisteredRunNoiseRadiusMeters)
+        {
+        }
+
+        /// <summary>
+        /// Creates an emitter with the validated registry movement-radius mapping.
+        /// </summary>
+        public NoiseEmitter(IEventBus eventBus, float walkRadiusMeters,
+            float runRadiusMeters)
         {
             _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
+            if (!IsFinitePositive(walkRadiusMeters)
+                || !IsFinitePositive(runRadiusMeters)
+                || walkRadiusMeters >= runRadiusMeters)
+                throw new ArgumentException("noise-emitter-radius-map");
+            _walkRadiusMeters = walkRadiusMeters;
+            _runRadiusMeters = runRadiusMeters;
             _factSessionId = _eventBus.SessionId;
         }
 
@@ -75,7 +93,26 @@ namespace WhisperWard.AI.Perception
 
         private EventPublishResult SubmitAcceptedSource(NoiseSourceRecord record)
         {
-            if (record.SourceKind == NoiseSourceKind.Burst
+            if (record.SourceKind == NoiseSourceKind.Movement
+                && (!string.Equals(record.StrideTargetState, "Walk",
+                        StringComparison.Ordinal)
+                    && !string.Equals(record.StrideTargetState, "Run",
+                        StringComparison.Ordinal)))
+            {
+                return EventPublishResult.Rejected(
+                    "noise-emitter-movement-mode-required");
+            }
+            if (record.SourceKind == NoiseSourceKind.Movement)
+            {
+                float expectedRadius = string.Equals(record.StrideTargetState,
+                    "Walk", StringComparison.Ordinal)
+                    ? _walkRadiusMeters : _runRadiusMeters;
+                if (Math.Abs(record.Radius - expectedRadius) > 0.000001f)
+                    return EventPublishResult.Rejected(
+                        "noise-emitter-movement-radius-not-registered");
+            }
+            if ((record.SourceKind == NoiseSourceKind.Movement
+                    || record.SourceKind == NoiseSourceKind.Burst)
                 && (!string.Equals(record.SessionId, _eventBus.SessionId,
                         StringComparison.Ordinal)
                     || record.AttemptEpoch != _eventBus.AttemptEpoch))
@@ -105,25 +142,43 @@ namespace WhisperWard.AI.Perception
         }
 
         /// <summary>
-        /// Stages one complete controller-owned Movement stride commit.
+        /// Stages one complete controller-owned Movement stride commit with the
+        /// producer's immutable session envelope.
         /// </summary>
-        public EventPublishResult SubmitMovement(string stepId, string publisher,
-            string sourceState, string strideTargetState, Vector3 previousPosition,
-            Vector3 feetPosition, float strideLengthMeters,
-            float ledgerRemainderMeters, float radius, float sourceTimestamp)
+        public EventPublishResult SubmitMovement(string sessionId,
+            long attemptEpoch, string stepId, string publisher,
+            string sourceState, string strideTargetState,
+            Vector3 previousPosition, Vector3 feetPosition,
+            float strideLengthMeters, float ledgerRemainderMeters,
+            float radius, float sourceTimestamp)
         {
             try
             {
-                return Submit(NoiseSourceRecord.Movement(stepId, publisher,
-                    sourceState, strideTargetState, previousPosition, feetPosition,
-                    strideLengthMeters, ledgerRemainderMeters, radius,
-                    sourceTimestamp));
+                return Submit(NoiseSourceRecord.Movement(sessionId, attemptEpoch,
+                    stepId, publisher, sourceState, strideTargetState,
+                    previousPosition, feetPosition, strideLengthMeters,
+                    ledgerRemainderMeters, radius, sourceTimestamp));
             }
             catch (ArgumentException)
             {
                 return EventPublishResult.Rejected(
                     "noise-emitter-invalid-movement-source");
             }
+        }
+
+        /// <summary>
+        /// Compatibility adapter retained for callers that have not migrated to
+        /// the session-aware Movement boundary. It fails closed rather than
+        /// relabeling an unbound source as belonging to the current generation.
+        /// </summary>
+        [Obsolete("Use the session-aware Movement overload.")]
+        public EventPublishResult SubmitMovement(string stepId, string publisher,
+            string sourceState, string strideTargetState, Vector3 previousPosition,
+            Vector3 feetPosition, float strideLengthMeters,
+            float ledgerRemainderMeters, float radius, float sourceTimestamp)
+        {
+            return EventPublishResult.Rejected(
+                "noise-emitter-movement-envelope-required");
         }
 
         /// <summary>
@@ -182,8 +237,8 @@ namespace WhisperWard.AI.Perception
 
         /// <summary>
         /// Flushes staged sources in the canonical source timestamp, rank, and ID
-        /// order. A full bus retains the source and its allocated fact ID for a
-        /// later retry; terminal rejection consumes that source identity.
+        /// order. A full bus retains the source and its uncommitted fact-ID
+        /// candidate for a later retry; only accepted publication commits the ID.
         /// </summary>
         public int Flush()
         {
@@ -197,8 +252,9 @@ namespace WhisperWard.AI.Perception
                 NoiseSourceRecord record = pending.Record;
                 EventPublishResult result;
                 if (record.SourceKind == NoiseSourceKind.Movement
-                    && _hasCommittedOrder && CompareSourceOrder(record,
-                        _lastSourceTimestamp, _lastSourceRank, _lastSourceEventId) < 0)
+                    && _hasCommittedMovementOrder
+                    && CompareSourceOrder(record, _lastMovementTimestamp,
+                        _lastMovementRank, _lastMovementEventId) < 0)
                 {
                     result = EventPublishResult.Rejected(
                         "noise-emitter-late-source-order");
@@ -208,8 +264,14 @@ namespace WhisperWard.AI.Perception
                     if (pending.FactId == 0)
                     {
                         if (_nextFactId == 0)
-                            return published;
-                        pending.FactId = _nextFactId++;
+                        {
+                            result = EventPublishResult.Rejected(
+                                "noise-emitter-fact-id-exhausted");
+                            goto publication_result;
+                        }
+                        // Reserve the next candidate without consuming it. The
+                        // cursor advances only after the bus accepts the raw fact.
+                        pending.FactId = _nextFactId;
                     }
 
                     try
@@ -232,7 +294,10 @@ namespace WhisperWard.AI.Perception
                         record.StrideTargetState,
                         record.StrideLengthMeters,
                         record.LedgerRemainderMeters,
-                        record.TerminalPublicationTime));
+                        record.TerminalPublicationTime,
+                        record.BurstFlightHandleId,
+                        record.StrideTargetState,
+                        "published"));
                 }
                     catch (ArgumentException)
                     {
@@ -241,11 +306,17 @@ namespace WhisperWard.AI.Perception
                     }
                 }
 
+            publication_result:
                 string sourceKey = BuildSourceKey(record.SourceKind, record.SourceEventId);
                 _lastResults[sourceKey] = result;
                 if (result.Admission == EventAdmission.Accepted
                     || result.Admission == EventAdmission.Duplicate)
+                {
                     _factIdsBySource[sourceKey] = pending.FactId;
+                    if (pending.FactId == _nextFactId)
+                        _nextFactId = _nextFactId == ulong.MaxValue
+                            ? 0 : _nextFactId + 1;
+                }
                 if (result.Admission == EventAdmission.Retry)
                 {
                     pending.RetryCount = Math.Max(pending.RetryCount + 1,
@@ -261,10 +332,10 @@ namespace WhisperWard.AI.Perception
                     && (result.Admission == EventAdmission.Accepted
                         || result.Admission == EventAdmission.Duplicate))
                 {
-                    _hasCommittedOrder = true;
-                    _lastSourceTimestamp = record.SourceTimestamp;
-                    _lastSourceRank = record.SourceEventClassRank;
-                    _lastSourceEventId = record.SourceEventId;
+                    _hasCommittedMovementOrder = true;
+                    _lastMovementTimestamp = record.SourceTimestamp;
+                    _lastMovementRank = record.SourceEventClassRank;
+                    _lastMovementEventId = record.SourceEventId;
                 }
                 if (result.Admission == EventAdmission.Accepted)
                     published++;
@@ -290,9 +361,10 @@ namespace WhisperWard.AI.Perception
             if (!IsFinite(timestamp))
                 return EventPublishResult.Rejected("noise-emitter-invalid-timestamp");
 
-            // Legacy publication is an adapter boundary; it cannot enter the
-            // authoritative Submit(NoiseSourceRecord) API as a source class.
-            EventPublishResult admission = SubmitAcceptedSource(
+            // The compatibility overload is deliberately routed through the
+            // authoritative admission boundary. Legacy source kinds fail closed
+            // instead of bypassing source-kind validation and fact ordering.
+            EventPublishResult admission = Submit(
                 NoiseSourceRecord.Legacy(sourceEventId, kind, source, position,
                     radius, timestamp));
             if (admission.Admission == EventAdmission.Retry)
@@ -421,8 +493,10 @@ namespace WhisperWard.AI.Perception
             _factIdsBySource.Clear();
             if (newSession)
                 _invalidatedSources.Clear();
-            _hasCommittedOrder = false;
-            _lastSourceEventId = string.Empty;
+            _hasCommittedMovementOrder = false;
+            _lastMovementTimestamp = 0f;
+            _lastMovementRank = 0;
+            _lastMovementEventId = string.Empty;
             if (!string.Equals(_factSessionId, activeSessionId,
                 StringComparison.Ordinal))
             {
@@ -447,8 +521,11 @@ namespace WhisperWard.AI.Perception
         {
             string prefix = sourceKind == NoiseSourceKind.Movement ? "step:"
                 : sourceKind == NoiseSourceKind.Burst ? "flight:" : "legacy:";
+            string canonicalId = sourceEventId ?? string.Empty;
+            if (!canonicalId.StartsWith(prefix, StringComparison.Ordinal))
+                canonicalId = prefix + canonicalId;
             return _eventBus.SessionId + "|" + _eventBus.AttemptEpoch + "|"
-                + prefix + sourceEventId;
+                + canonicalId;
         }
 
         private static int CompareSourceOrder(NoiseSourceRecord record,
@@ -476,15 +553,7 @@ namespace WhisperWard.AI.Perception
 
         private static int CompareSourceEventIds(string left, string right)
         {
-            ulong leftNumber;
-            ulong rightNumber;
-            bool leftIsNumeric = ulong.TryParse(left, NumberStyles.None,
-                CultureInfo.InvariantCulture, out leftNumber);
-            bool rightIsNumeric = ulong.TryParse(right, NumberStyles.None,
-                CultureInfo.InvariantCulture, out rightNumber);
-            if (leftIsNumeric && rightIsNumeric)
-                return leftNumber.CompareTo(rightNumber);
-            return string.Compare(left, right, StringComparison.Ordinal);
+            return NoiseSourceOrdering.CompareSourceEventIds(left, right);
         }
 
         private static bool IsFinite(Vector3 value)

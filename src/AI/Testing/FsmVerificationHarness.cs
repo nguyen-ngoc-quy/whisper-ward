@@ -32,7 +32,10 @@ namespace WhisperWard.AI.Testing
         public FsmVerificationHarness(float tickInterval = 0.5f)
         {
             Bus = new SessionEventBus();
-            Clock = new VirtualTickClockService(tickInterval);
+            // The shared clock is always canonical 1/120 s. The fixture's
+            // tickInterval parameter remains the requested boundary duration
+            // for existing callers; Advance splits that duration below.
+            Clock = new VirtualTickClockService();
             Coordinator = new SessionPhaseCoordinator(Bus, Clock);
 
             _decisionToken = Bus.Subscribe<DecisionRecord>(record =>
@@ -89,12 +92,37 @@ namespace WhisperWard.AI.Testing
             GuardFSM fsm = gameObject.AddComponent<GuardFSM>();
             fsm.ConfigureWithPhaseCoordinator(Bus, Clock, sessionId, attemptEpoch,
                 Coordinator);
+            // EditMode does not guarantee MonoBehaviour.Awake ordering for a
+            // freshly-created fixture. Ensure relay-driven tests begin in the
+            // production default state without changing runtime behavior.
+            if (fsm.CurrentState == null)
+                fsm.TransitionTo(fsm.GetPatrolState());
             return fsm;
         }
 
         public void Advance(float gameplaySeconds)
         {
-            Clock.Advance(gameplaySeconds);
+            if (float.IsNaN(gameplaySeconds) || float.IsInfinity(gameplaySeconds)
+                || gameplaySeconds <= 0f)
+            {
+                Clock.Advance(gameplaySeconds);
+                return;
+            }
+
+            // The production clock clamps one render-frame call to the
+            // registry-backed max_frame_delta_s. Test boundaries may be much
+            // larger (the FSM fixture uses 0.5 s), so drive them as the same
+            // bounded sequence rather than accidentally dropping the whole
+            // request to one sub-frame.
+            float remaining = gameplaySeconds;
+            float maxFrameDelta =
+                NoiseRuntimeConfiguration.RegisteredMaxFrameDeltaSeconds;
+            while (remaining > 0f)
+            {
+                float frameDelta = Math.Min(remaining, maxFrameDelta);
+                Clock.Advance(frameDelta);
+                remaining -= frameDelta;
+            }
         }
 
         public void ClearCapturedEvents()

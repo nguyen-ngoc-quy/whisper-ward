@@ -52,7 +52,9 @@ namespace WhisperWard.AI.Core
         private long _nextSubscription = 1;
         private long _nextSequence = 1;
 
-        public SessionEventBus(int capacity = 512, int maxRetries = 3,
+        public SessionEventBus(
+            int capacity = NoiseRuntimeConfiguration.RegisteredEventBusCapacity,
+            int maxRetries = NoiseRuntimeConfiguration.RegisteredEventBusRetryAttempts,
             IEventDiagnosticSink diagnosticSink = null)
         {
             if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
@@ -70,6 +72,10 @@ namespace WhisperWard.AI.Core
         public int PendingEnvelopeCount { get { return _pending.Count; } }
         public int PendingEnvelopeCapacity { get { return _capacity; } }
         public int Capacity { get { return _capacity; } }
+
+        /// <summary>Configured retry limit for bounded transport work.</summary>
+        public int RetryLimit { get { return _maxRetries; } }
+
         public int RetryCount { get; private set; }
         public int RejectedCount { get; private set; }
         public int StaleCount { get; private set; }
@@ -404,7 +410,24 @@ namespace WhisperWard.AI.Core
 
         private void ClearQueuedGeneration()
         {
+            var retained = new List<QueuedEvent>();
+            for (int i = 0; i < _pending.Count; i++)
+            {
+                QueuedEvent queued = _pending[i];
+                var handoff = queued.Envelope.Payload as IStaleGenerationHandoff;
+                if (handoff != null && handoff.RetainAcrossGenerationBarrier)
+                {
+                    retained.Add(queued);
+                    continue;
+                }
+
+                StaleCount++;
+                RecordDiagnostic("event-bus-stale-generation",
+                    queued.Envelope, queued.RetryCount);
+            }
+
             _pending.Clear();
+            _pending.AddRange(retained);
             _admitted.Clear();
             _delivered.Clear();
             _retryCounts.Clear();
@@ -463,20 +486,42 @@ namespace WhisperWard.AI.Core
 
         private static int CompareQueuedEvents(QueuedEvent left, QueuedEvent right)
         {
-            // Preserve per-publisher ingress order. Across publishers, timestamp,
-            // publisher, identity, then sequence provide deterministic ordering.
-            if (string.Equals(left.Envelope.Publisher, right.Envelope.Publisher,
-                StringComparison.Ordinal))
-                return left.Sequence.CompareTo(right.Sequence);
+            IEventSourceOrdering leftSource = left.Envelope.Payload
+                as IEventSourceOrdering;
+            IEventSourceOrdering rightSource = right.Envelope.Payload
+                as IEventSourceOrdering;
+            if (leftSource != null && rightSource != null)
+            {
+                // Raw facts and Perception relays carry the same canonical
+                // source tuple. Generic envelope timestamps such as relay
+                // evaluatedAt are transport metadata and never outrank it.
+                int compare = leftSource.SourceTimestamp.CompareTo(
+                    rightSource.SourceTimestamp);
+                if (compare != 0) return compare;
+                compare = leftSource.SourceEventClassRank.CompareTo(
+                    rightSource.SourceEventClassRank);
+                if (compare != 0) return compare;
+                compare = NoiseSourceOrdering.CompareSourceEventIds(
+                    leftSource.SourceEventId, rightSource.SourceEventId);
+                if (compare != 0) return compare;
+                compare = leftSource.SourceFactId.CompareTo(
+                    rightSource.SourceFactId);
+                if (compare != 0) return compare;
+            }
 
-            int compare = left.Envelope.Timestamp.CompareTo(right.Envelope.Timestamp);
-            if (compare != 0) return compare;
-            compare = string.Compare(left.Envelope.Publisher, right.Envelope.Publisher,
-                StringComparison.Ordinal);
-            if (compare != 0) return compare;
-            compare = string.Compare(left.Envelope.Identity, right.Envelope.Identity,
-                StringComparison.Ordinal);
-            return compare != 0 ? compare : left.Sequence.CompareTo(right.Sequence);
+            // Events without a canonical source tuple retain the generic
+            // envelope timestamp as their transport ordering fallback.
+            int timestampCompare = left.Envelope.Timestamp.CompareTo(
+                right.Envelope.Timestamp);
+            if (timestampCompare != 0) return timestampCompare;
+
+            int publisherCompare = string.Compare(left.Envelope.Publisher,
+                right.Envelope.Publisher, StringComparison.Ordinal);
+            if (publisherCompare != 0) return publisherCompare;
+            int identityCompare = string.Compare(left.Envelope.Identity,
+                right.Envelope.Identity, StringComparison.Ordinal);
+            return identityCompare != 0 ? identityCompare
+                : left.Sequence.CompareTo(right.Sequence);
         }
     }
 

@@ -16,21 +16,11 @@ namespace WhisperWard.AI.FSM.States
     {
         public override string StateName { get { return "Investigate"; } }
 
-        private const float T_GIVEUP_BASE = 4.0f;
-        private const float K_THOROUGH = 0.50f;
-        private const float R_MAX = 1.0f;
-        private const float T_SWEEP_BASE = 0.8f;
-        private const int N_SWEEP_REF = 4;
-        private const float R_INVESTIGATE_ERROR = 1.5f;
-        private const float T_CORROBORATE_WINDOW = 6.0f;
-        private const float CORROBORATE_RADIUS = 1.5f;
-        private const float T_REANCHOR_EXTEND = 2.0f;
-        private const float T_SPOTFRONT_VERIFY = 1.5f;
-        private const float T_CATCH = 1.0f;
-        private const float CATCH_RANGE = 5.5f;
-        private const float DELTA_Y_TOLERANCE = 1.0f;
-        private const float HYSTERESIS = 0.5f;
-        private const float NAVMESH_SAMPLE_MAXDISTANCE = 0.4f;
+        /// <summary>Last authoritative position retained for lifecycle handoff.</summary>
+        public Vector3 AuthoritativeEpisodePosition
+        {
+            get { return _targetPosition; }
+        }
 
         private Vector3 _targetPosition;
         private Vector3 _interiorPosition;
@@ -47,7 +37,13 @@ namespace WhisperWard.AI.FSM.States
         private bool _witnessedEntryAuthority;
         private float _thoroughness = 1f;
         private bool _isMovingToTarget;
+        private float _pathEndSuppressionTimer;
+        private int _pathEndObservationTicks;
+        private string _startArm = "not-started";
         private bool _hasLOS;
+        private bool _hasReachabilityVerdict;
+        private bool _isReachable;
+        private bool _hasEpisodeAnchorTimestamp;
         private bool _resolved;
         private bool _spotHoldActive;
         private int _currentSweep;
@@ -55,6 +51,8 @@ namespace WhisperWard.AI.FSM.States
         private float _sweepTimer;
         private int _corroborationCount;
         private int _targetSampleIndex;
+        private uint _targetSeed;
+        private string _targetResolution = "authored";
         private readonly List<Vector3> _scanTargetPositions = new List<Vector3>();
         private int _currentScan;
         private bool _spotOccupancyKnown;
@@ -68,17 +66,81 @@ namespace WhisperWard.AI.FSM.States
         private float _difficultyScalar = 1f;
         private string _terminalCause;
 
+        private float SweepBaseSeconds
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredSweepBaseSeconds
+                : _noiseConfiguration.SweepBaseSeconds; }
+        }
+
+        private int SweepReferenceCount
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredSweepReferenceCount
+                : _noiseConfiguration.SweepReferenceCount; }
+        }
+
+        private float InvestigateErrorRadiusMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredInvestigateErrorRadiusMeters
+                : _noiseConfiguration.InvestigateErrorRadiusMeters; }
+        }
+
+        private float SpotFrontVerifySeconds
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredSpotFrontVerifySeconds
+                : _noiseConfiguration.SpotFrontVerifySeconds; }
+        }
+
+        private float CatchSeconds
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredCatchSeconds
+                : _noiseConfiguration.CatchSeconds; }
+        }
+
+        private float CatchRangeMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredCatchRangeMeters
+                : _noiseConfiguration.CatchRangeMeters; }
+        }
+
+        private float DeltaYToleranceMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredDeltaYToleranceMeters
+                : _noiseConfiguration.DeltaYToleranceMeters; }
+        }
+
+        private float HysteresisMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredHysteresisMeters
+                : _noiseConfiguration.HysteresisMeters; }
+        }
+
+        private float NavMeshSampleMaxDistanceMeters
+        {
+            get { return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredNavMeshSampleMaxDistanceMeters
+                : _noiseConfiguration.NavMeshSampleMaxDistanceMeters; }
+        }
+
         /// <summary>
         /// Injects the immutable registry-backed timing contract. Until the
-        /// composition root supplies it, the provisional constants remain only a
-        /// compatibility adapter for existing fixtures.
+        /// composition root supplies it, the registered compatibility profile is
+        /// used for deterministic fixtures.
         /// </summary>
         public void ConfigureNoiseRuntime(NoiseRuntimeConfiguration configuration)
         {
             _noiseConfiguration = configuration;
         }
 
-        public void Init(string entryId, Vector3 position, string cause, float residualR = 0f)
+        public void Init(string entryId, Vector3 position, string cause,
+            float residualR = 0f, float? episodeOpenTPublish = null)
         {
             _entryId = entryId ?? string.Empty;
             _episodeAnchorPosition = position;
@@ -88,8 +150,12 @@ namespace WhisperWard.AI.FSM.States
             _anchorSessionId = string.Empty;
             _anchorGuardEid = string.Empty;
             _episodeAnchorFactId = 0;
-            _episodeAnchorTimestamp = 0f;
+            _episodeAnchorTimestamp = episodeOpenTPublish ?? 0f;
+            _hasEpisodeAnchorTimestamp = episodeOpenTPublish.HasValue;
             _residualAtAnchor = Mathf.Clamp01(residualR);
+            _targetSeed = 0u;
+            _targetSampleIndex = 0;
+            _targetResolution = "authored";
             _witnessedEntryAuthority = false;
             _spotHoldActive = false;
             _corroborationCount = 0;
@@ -112,9 +178,11 @@ namespace WhisperWard.AI.FSM.States
         /// position. The authority survives retargeting and is not inferred later.
         /// </summary>
         public void InitHideEntry(string entryId, Vector3 spotPosition,
-            float residualR, Vector3? spotFrontPosition = null)
+            float residualR, Vector3? spotFrontPosition = null,
+            float? episodeOpenTPublish = null)
         {
-            Init(entryId, spotPosition, "hide-entry", residualR);
+            Init(entryId, spotPosition, "hide-entry", residualR,
+                episodeOpenTPublish);
             _targetPosition = spotFrontPosition.HasValue
                 ? spotFrontPosition.Value : spotPosition;
             _witnessedEntryAuthority = true;
@@ -129,7 +197,20 @@ namespace WhisperWard.AI.FSM.States
             Vector3 spotPosition, float residualR,
             Vector3? spotFrontPosition = null)
         {
-            InitHideEntry(entryId, spotPosition, residualR, spotFrontPosition);
+            Vector3 anchorPosition = _episodeAnchorPosition;
+            string anchorSessionId = _anchorSessionId;
+            string anchorGuardEid = _anchorGuardEid;
+            ulong anchorFactId = _episodeAnchorFactId;
+            float anchorTimestamp = _episodeAnchorTimestamp;
+            bool hasAnchorTimestamp = _hasEpisodeAnchorTimestamp;
+            InitHideEntry(entryId, spotPosition, residualR, spotFrontPosition,
+                hasAnchorTimestamp ? anchorTimestamp : (float?)null);
+            _episodeAnchorPosition = anchorPosition;
+            _anchorSessionId = anchorSessionId;
+            _anchorGuardEid = anchorGuardEid;
+            _episodeAnchorFactId = anchorFactId;
+            _episodeAnchorTimestamp = anchorTimestamp;
+            _hasEpisodeAnchorTimestamp = hasAnchorTimestamp;
             BuildScanTargets();
             fsm.currentEntryId = _entryId;
             fsm.SetGoalMode(GuardGoalMode.HideSpotFront);
@@ -144,19 +225,21 @@ namespace WhisperWard.AI.FSM.States
         {
             if (relay == null) throw new ArgumentNullException(nameof(relay));
             _entryId = relay.EntryId;
-            _episodeAnchorPosition = relay.Position;
+            _episodeAnchorPosition = relay.AuthoritativeOrigin;
             _anchorSessionId = relay.SessionId;
             _anchorGuardEid = relay.GuardEid;
             _episodeAnchorFactId = relay.FactId;
-            _episodeAnchorTimestamp = relay.SourceTimestamp;
+            _episodeAnchorTimestamp = relay.TPublish;
+            _hasEpisodeAnchorTimestamp = true;
             _residualAtAnchor = Mathf.Clamp01(relay.ResidualAtHearing);
             _witnessedEntryAuthority = false;
             _spotHoldActive = false;
             _cause = "noise";
             _corroborationCount = 1;
             _targetSampleIndex = 0;
-            _targetPosition = BuildDeterministicTarget(relay.Position, relay.SessionId,
+            _targetPosition = BuildDeterministicTarget(relay.AuthoritativeOrigin, relay.SessionId,
                 relay.GuardEid, relay.EntryId, relay.FactId, 0);
+            _targetResolution = "candidate";
             _terminalCause = null;
             ResetTiming();
         }
@@ -164,28 +247,34 @@ namespace WhisperWard.AI.FSM.States
         private void ResetTiming()
         {
             float thoroughnessCoefficient = _noiseConfiguration == null
-                ? K_THOROUGH : _noiseConfiguration.ThoroughnessCoefficient;
+                ? NoiseRuntimeConfiguration.RegisteredThoroughnessCoefficient : _noiseConfiguration.ThoroughnessCoefficient;
             float residualMax = _noiseConfiguration == null
-                ? R_MAX : _noiseConfiguration.ReanchorMaxMeters;
+                ? NoiseRuntimeConfiguration.RegisteredReanchorMaxMeters : _noiseConfiguration.ReanchorMaxMeters;
             float giveupBase = _noiseConfiguration == null
-                ? T_GIVEUP_BASE : _noiseConfiguration.InvestigateBaseSeconds;
+                ? NoiseRuntimeConfiguration.RegisteredInvestigateBaseSeconds : _noiseConfiguration.InvestigateBaseSeconds;
             _difficultyScalar = _noiseConfiguration == null
                 ? 1f : _noiseConfiguration.DifficultyScalar;
             _thoroughness = 1f + thoroughnessCoefficient
                 * (_residualAtAnchor / Mathf.Max(0.0001f, residualMax));
-            _totalSweeps = Mathf.Max(1, Mathf.CeilToInt(N_SWEEP_REF * _thoroughness));
+            _totalSweeps = Mathf.Max(1, Mathf.CeilToInt(SweepReferenceCount * _thoroughness));
             _giveupTimer = giveupBase * _difficultyScalar * _thoroughness;
             _searchArmed = false;
             _isMovingToTarget = true;
+            _pathEndSuppressionTimer = NoiseRuntimeConfiguration
+                .RegisteredInvestigatePathEndSuppressMaxSeconds;
+            _pathEndObservationTicks = 0;
+            _startArm = "not-started";
             _hasLOS = false;
+            _hasReachabilityVerdict = false;
+            _isReachable = false;
             _resolved = false;
             _currentSweep = 0;
             _currentScan = 0;
             _sweepTimer = 0f;
             _spotOccupancyKnown = false;
             _spotOccupied = false;
-            _spotVerifyTimer = T_SPOTFRONT_VERIFY;
-            _catchTimer = T_CATCH;
+            _spotVerifyTimer = SpotFrontVerifySeconds;
+            _catchTimer = CatchSeconds;
             _catchTimerLive = false;
             _scanTargetPositions.Clear();
         }
@@ -193,25 +282,39 @@ namespace WhisperWard.AI.FSM.States
         private float GetGiveupBase()
         {
             return _noiseConfiguration == null
-                ? T_GIVEUP_BASE : _noiseConfiguration.InvestigateBaseSeconds;
+                ? NoiseRuntimeConfiguration.RegisteredInvestigateBaseSeconds : _noiseConfiguration.InvestigateBaseSeconds;
         }
 
         private float GetThoroughnessCoefficient()
         {
             return _noiseConfiguration == null
-                ? K_THOROUGH : _noiseConfiguration.ThoroughnessCoefficient;
+                ? NoiseRuntimeConfiguration.RegisteredThoroughnessCoefficient : _noiseConfiguration.ThoroughnessCoefficient;
         }
 
         private float GetResidualMax()
         {
             return _noiseConfiguration == null
-                ? R_MAX : _noiseConfiguration.ReanchorMaxMeters;
+                ? NoiseRuntimeConfiguration.RegisteredReanchorMaxMeters : _noiseConfiguration.ReanchorMaxMeters;
         }
 
         private float GetReanchorExtend()
         {
             return _noiseConfiguration == null
-                ? T_REANCHOR_EXTEND : _noiseConfiguration.NoiseReanchorExtendSeconds;
+                ? NoiseRuntimeConfiguration.RegisteredNoiseReanchorExtendSeconds : _noiseConfiguration.NoiseReanchorExtendSeconds;
+        }
+
+        private float GetCorroborateWindow()
+        {
+            return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredNoiseCorroborateWindowSeconds
+                : _noiseConfiguration.NoiseCorroborateWindowSeconds;
+        }
+
+        private float GetCorroborateRadius()
+        {
+            return _noiseConfiguration == null
+                ? NoiseRuntimeConfiguration.RegisteredNoiseCorroborateRadiusMeters
+                : _noiseConfiguration.NoiseCorroborateRadiusMeters;
         }
 
         public override void OnEnter(GuardFSM fsm)
@@ -237,12 +340,20 @@ namespace WhisperWard.AI.FSM.States
                 Cause = _cause,
                 Position = _episodeAnchorPosition,
                 ThresholdState = "active",
-                IsHideEntry = _witnessedEntryAuthority
+                IsHideEntry = _witnessedEntryAuthority,
+                EpisodeAnchorSessionId = _anchorSessionId,
+                EpisodeAnchorGuardEid = _anchorGuardEid,
+                EpisodeAnchorFactId = _episodeAnchorFactId,
+                EpisodeAnchorTPublish = _episodeAnchorTimestamp,
+                TargetPosition = _targetPosition,
+                TargetSeed = _targetSeed,
+                TargetSampleIndex = _targetSampleIndex,
+                TargetResolution = _targetResolution
             });
             fsm.PublishLivenessFact("open", "Investigate",
-                "investigate-commit", _episodeAnchorTimestamp > 0f
-                    ? _episodeAnchorTimestamp : 0f, _entryId,
-                _episodeAnchorPosition, "noise-or-investigate-authority");
+                "investigate-commit", _hasEpisodeAnchorTimestamp
+                    ? _episodeAnchorTimestamp : fsm.CurrentVirtualTime, _entryId,
+                _episodeAnchorPosition, LivenessPositionSources.OpenerDecision);
         }
 
         private Vector3 CalculateOffsetPosition(Vector3 center, float angleDegrees, float radius)
@@ -275,18 +386,20 @@ namespace WhisperWard.AI.FSM.States
             }
         }
 
-        private static Vector3 BuildDeterministicTarget(Vector3 origin,
+        private Vector3 BuildDeterministicTarget(Vector3 origin,
             string sessionId, string guardEid, string entryId, ulong factId,
             int sampleIndex)
         {
             uint seed = StableHash(sessionId) ^ StableHash(guardEid)
                 ^ StableHash(entryId) ^ (uint)factId ^ (uint)(factId >> 32)
                 ^ (uint)sampleIndex * 2654435761u;
+            _targetSeed = seed;
+            _targetSampleIndex = sampleIndex;
             seed = seed * 1664525u + 1013904223u;
             float u1 = (seed & 0x00ffffffu) / 16777216f;
             seed = seed * 1664525u + 1013904223u;
             float u2 = (seed & 0x00ffffffu) / 16777216f;
-            float radius = R_INVESTIGATE_ERROR * Mathf.Sqrt(u1);
+            float radius = InvestigateErrorRadiusMeters * Mathf.Sqrt(u1);
             float angle = 2f * Mathf.PI * u2;
             return origin + new Vector3(radius * Mathf.Cos(angle), 0f,
                 radius * Mathf.Sin(angle));
@@ -296,16 +409,43 @@ namespace WhisperWard.AI.FSM.States
         {
             if (_resolved) return;
 
-            if (_isMovingToTarget
-                && fsm.TryGetComponent<GuardNavigator>(out var nav)
-                && nav.HasReachedDestination())
+            if (_isMovingToTarget)
             {
-                _isMovingToTarget = false;
-                _searchArmed = true;
-                _sweepTimer = T_SWEEP_BASE;
-                _spotVerifyTimer = T_SPOTFRONT_VERIFY;
-                _catchTimer = T_CATCH;
-                Debug.Log("[InvestigateState] Reached target position; search armed");
+                bool armed = false;
+                if (fsm.TryGetComponent<GuardNavigator>(out var nav))
+                {
+                    // Arrival has precedence over path-end when both observations
+                    // are true on one boundary.
+                    if (nav.HasReachedArrival(_targetPosition,
+                        NoiseRuntimeConfiguration.RegisteredInvestigateArrivalToleranceMeters))
+                    {
+                        ArmSearch("arrived");
+                        armed = true;
+                    }
+                    else if (nav.HasPathEndObservation(
+                        NoiseRuntimeConfiguration.RegisteredInvestigatePathEndToleranceMeters,
+                        NoiseRuntimeConfiguration.RegisteredInvestigatePathEndSpeedMetersPerSecond))
+                    {
+                        _pathEndObservationTicks++;
+                        if (_pathEndObservationTicks >= NoiseRuntimeConfiguration
+                            .RegisteredInvestigatePathEndTicks)
+                        {
+                            ArmSearch("path-end");
+                            armed = true;
+                        }
+                    }
+                    else
+                    {
+                        _pathEndObservationTicks = 0;
+                    }
+                }
+
+                if (!armed)
+                {
+                    _pathEndSuppressionTimer -= Mathf.Max(0f, delta);
+                    if (_pathEndSuppressionTimer <= 0f)
+                        ArmSearch("force-arm");
+                }
             }
 
             // Witnessed-entry Investigate episodes hold the spot front instead of
@@ -333,13 +473,14 @@ namespace WhisperWard.AI.FSM.States
                     }
                     PerformScan();
                     _currentSweep++;
-                    _sweepTimer = T_SWEEP_BASE;
+                    _sweepTimer = SweepBaseSeconds;
                 }
             }
 
-            // LOS is a Perception-owned fact, received in OnHandleEvent. A live
-            // sighting pauses the remaining search budget; it never resets it.
-            if (!_hasLOS)
+            // LOS and reachability are Perception-owned facts, received in
+            // OnHandleEvent. A live but unreachable target still consumes the
+            // remaining search budget; only a current reachable sighting pauses it.
+            if (!_hasLOS || (_hasReachabilityVerdict && !_isReachable))
             {
                 _giveupTimer -= delta;
                 if (_giveupTimer <= 0f)
@@ -348,6 +489,18 @@ namespace WhisperWard.AI.FSM.States
                     return;
                 }
             }
+        }
+
+        private void ArmSearch(string arm)
+        {
+            if (!_isMovingToTarget) return;
+            _isMovingToTarget = false;
+            _searchArmed = true;
+            _startArm = arm ?? "unknown";
+            _sweepTimer = SweepBaseSeconds;
+            _spotVerifyTimer = SpotFrontVerifySeconds;
+            _catchTimer = CatchSeconds;
+            Debug.Log("[InvestigateState] Search armed: " + _startArm);
         }
 
         private void UpdateWitnessedHold(GuardFSM fsm, float delta)
@@ -398,9 +551,10 @@ namespace WhisperWard.AI.FSM.States
             NavMeshHit hit;
             int areaMask = _agent.areaMask;
             if (areaMask == 0 || !NavMesh.SamplePosition(_interiorPosition,
-                out hit, NAVMESH_SAMPLE_MAXDISTANCE, areaMask))
+                out hit, NavMeshSampleMaxDistanceMeters, areaMask))
                 return false;
-            _agent.CalculatePath(hit.position, path);
+            Vector3 sampledInteriorPosition = hit.position;
+            _agent.CalculatePath(sampledInteriorPosition, path);
             if (path.status == NavMeshPathStatus.PathInvalid) return false;
 
             float pathLength = GetPathLength(path);
@@ -409,17 +563,18 @@ namespace WhisperWard.AI.FSM.States
                 if (path.corners == null || path.corners.Length == 0)
                     return false;
                 Vector3 lastCorner = path.corners[path.corners.Length - 1];
-                if (!_physicsProfile.Linecast(lastCorner, _interiorPosition).Clear)
+                if (!_physicsProfile.Linecast(lastCorner,
+                    sampledInteriorPosition).Clear)
                     return false;
             }
 
-            if (pathLength > CATCH_RANGE + HYSTERESIS) return false;
-            Vector3 delta = _interiorPosition - fsm.transform.position;
+            if (pathLength > CatchRangeMeters + HysteresisMeters) return false;
+            Vector3 delta = sampledInteriorPosition - fsm.transform.position;
             float xzDistance = new Vector2(delta.x, delta.z).magnitude;
-            return xzDistance <= CATCH_RANGE + HYSTERESIS
-                && Mathf.Abs(delta.y) <= DELTA_Y_TOLERANCE
+            return xzDistance <= CatchRangeMeters + HysteresisMeters
+                && Mathf.Abs(delta.y) <= DeltaYToleranceMeters
                 && _physicsProfile.Linecast(fsm.transform.position,
-                    _interiorPosition).Clear;
+                    sampledInteriorPosition).Clear;
         }
 
         private float GetPathLength(NavMeshPath path)
@@ -460,23 +615,26 @@ namespace WhisperWard.AI.FSM.States
 
                 if (hideBreak.APreBreak >= hideBreak.ThresholdApplied)
                 {
-                    _terminalCause = "sight-committed";
-                    fsm.PublishDecision(new InvestigateResolution
-                    {
-                        EntryId = _entryId,
-                        Cause = "sight-committed",
-                        Position = hideBreak.SpotPosition
-                    });
+                    // A witnessed hide-entry break promotes the existing
+                    // Investigate episode in place. The episode identity and its
+                    // authoritative target remain FSM-owned; the authored spot
+                    // only supplies Chase's entry/hold geometry.
+                    string promotionEntryId = _entryId;
+                    Vector3 promotionPosition = _targetPosition;
                     var chaseState = fsm.GetChaseState();
-                    chaseState.Init(hideBreak.EntryId, "hide-entry",
-                        hideBreak.SpotPosition, true,
+                    chaseState.InitPromotion(promotionEntryId, "hide-entry",
+                        hideBreak.SpotPosition, promotionPosition, true,
                         hideBreak.HasSpotFrontPosition
                             ? hideBreak.SpotFrontPosition : (Vector3?)null);
+                    fsm.PrepareLivenessPromotion(promotionEntryId);
                     fsm.TransitionTo(chaseState);
                 }
                 else
                 {
-                    RetargetHideEntry(fsm, hideBreak.EntryId,
+                    // A sub-threshold retarget continues the live episode: the
+                    // Perception-owned identity must survive the authored spot
+                    // change; only the geometry is retargeted.
+                    RetargetHideEntry(fsm, _entryId,
                         hideBreak.SpotPosition, hideBreak.ResidualR,
                         hideBreak.HasSpotFrontPosition
                             ? hideBreak.SpotFrontPosition : (Vector3?)null);
@@ -498,7 +656,7 @@ namespace WhisperWard.AI.FSM.States
                     return;
                 }
 
-                if (_cause == "noise" && _corroborationCount < 3
+                if (_corroborationCount < 3
                     && IsQualifyingCorroboration(relay))
                 {
                     if (fsm.NoiseResponseProfile == NoiseResponseProfile.MVP)
@@ -518,6 +676,21 @@ namespace WhisperWard.AI.FSM.States
                 {
                     fsm.PublishRelayOutcome(relay, RelayConsumption.Ignored);
                 }
+                return;
+            }
+
+            if (evt is Reachability reachability)
+            {
+                if ((!string.IsNullOrEmpty(reachability.GuardEid)
+                        && !string.Equals(reachability.GuardEid, fsm.GuardEid,
+                            StringComparison.Ordinal))
+                    || (!string.IsNullOrEmpty(reachability.EntryId)
+                        && !string.Equals(reachability.EntryId, _entryId,
+                            StringComparison.Ordinal)))
+                    return;
+
+                _hasReachabilityVerdict = true;
+                _isReachable = reachability.IsReachable;
                 return;
             }
 
@@ -548,11 +721,12 @@ namespace WhisperWard.AI.FSM.States
 
             if (evt is ChaseReached chaseEvt)
             {
-                string promotionEntryId = string.IsNullOrWhiteSpace(chaseEvt.EntryId)
-                    ? _entryId : chaseEvt.EntryId;
+                // ChaseReached can carry a conflicting adapter identity; the
+                // live Investigate episode remains authoritative for promotion.
+                string promotionEntryId = _entryId;
                 var chaseState = fsm.GetChaseState();
                 chaseState.InitPromotion(promotionEntryId, "threshold",
-                    chaseEvt.Position);
+                    chaseEvt.Position, _targetPosition);
                 fsm.PrepareLivenessPromotion(promotionEntryId);
                 fsm.TransitionTo(chaseState);
             }
@@ -560,13 +734,13 @@ namespace WhisperWard.AI.FSM.States
 
         private bool IsQualifyingCorroboration(NoiseHeardRelay relay)
         {
-            float dt = relay.SourceTimestamp - _episodeAnchorTimestamp;
+            float dt = relay.TPublish - _episodeAnchorTimestamp;
             float distance = Vector2.Distance(
-                new Vector2(relay.Position.x, relay.Position.z),
+                new Vector2(relay.AuthoritativeOrigin.x, relay.AuthoritativeOrigin.z),
                 new Vector2(_episodeAnchorPosition.x, _episodeAnchorPosition.z));
             return relay.FactId != _episodeAnchorFactId
-                && dt >= 0f && dt <= T_CORROBORATE_WINDOW
-                && distance <= CORROBORATE_RADIUS;
+                && dt >= 0f && dt <= GetCorroborateWindow()
+                && distance <= GetCorroborateRadius();
         }
 
         private void Reanchor(NoiseHeardRelay relay, GuardFSM fsm)
@@ -576,24 +750,53 @@ namespace WhisperWard.AI.FSM.States
             // Preserve the first raw source anchor for every later qualification;
             // only the current search target and residual budget are re-anchored.
             _residualAtAnchor = Mathf.Clamp01(relay.ResidualAtHearing);
-            _targetPosition = relay.Position;
+            _targetPosition = relay.AuthoritativeOrigin;
             float residualMax = Mathf.Max(0.0001f, GetResidualMax());
             float coefficient = GetThoroughnessCoefficient();
             float giveupBase = GetGiveupBase();
             _thoroughness = 1f + coefficient * (_residualAtAnchor / residualMax);
-            _totalSweeps = Mathf.Max(1, Mathf.CeilToInt(N_SWEEP_REF * _thoroughness));
+            _totalSweeps = Mathf.Max(1, Mathf.CeilToInt(SweepReferenceCount * _thoroughness));
             // Re-anchor uses the authored difficulty ratio exactly once; the
             // additive extension is applied after the residual-scaled base.
             _giveupTimer = giveupBase * _difficultyScalar
                 * (1f + coefficient * (_residualAtAnchor / residualMax))
                 + GetReanchorExtend();
+            _targetSeed = 0u;
+            _targetSampleIndex = 0;
+            _targetResolution = "reanchor-raw";
             _isMovingToTarget = true;
             _searchArmed = false;
+            _pathEndSuppressionTimer = NoiseRuntimeConfiguration
+                .RegisteredInvestigatePathEndSuppressMaxSeconds;
+            _pathEndObservationTicks = 0;
+            _startArm = "not-started";
             _currentSweep = 0;
             _currentScan = 0;
             BuildScanTargets();
             if (fsm.TryGetComponent<GuardNavigator>(out var nav))
                 nav.MoveTo(_targetPosition);
+            fsm.PublishDecision(new NoiseReanchor
+            {
+                EntryId = _entryId,
+                CorroboratingFactId = relay.FactId,
+                Position = relay.AuthoritativeOrigin,
+                TPublish = relay.TPublish,
+                SourceKind = relay.Kind,
+                SourceEventId = relay.SourceEventId,
+                TerminalPublicationTime = relay.SourceEventClassRank
+                    == (int)NoiseSourceKind.Burst
+                    ? relay.TerminalPublicationTime : (float?)null,
+                ResidualAtHearing = relay.ResidualAtHearing,
+                ReanchorExtensionSeconds = GetReanchorExtend(),
+                EpisodeAnchorKind = _cause,
+                EpisodeAnchorPosition = _episodeAnchorPosition,
+                EpisodeAnchorTPublish = _episodeAnchorTimestamp,
+                EpisodeAnchorFactId = _cause == "noise"
+                    ? _episodeAnchorFactId : 0UL,
+                EpisodeAnchorIdentity = _cause == "noise"
+                    ? string.Empty : _entryId,
+                Timestamp = relay.TPublish
+            });
             Debug.Log("[InvestigateState] Re-anchored to corroborating noise");
         }
 
@@ -606,7 +809,7 @@ namespace WhisperWard.AI.FSM.States
                 fsm.PublishLivenessFact("close", "Investigate",
                     _terminalCause ?? "investigate-resolution",
                     fsm.CurrentVirtualTime, _entryId,
-                    _targetPosition, "investigate-authority");
+                    _targetPosition, LivenessPositionSources.TerminalDecision);
             }
             fsm.SetGoalMode(GuardGoalMode.None);
         }
