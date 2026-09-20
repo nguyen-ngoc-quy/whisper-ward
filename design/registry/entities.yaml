@@ -207,6 +207,38 @@ formula_definitions:
     note: "Minimum Wall Thickness Invariant (D6, rev 2026-09-20): Level geometry certification constraint ensuring all solid E20 obstacles have thickness >= 0.10 m to prevent projectile tunneling and acoustic leakage."
     consumed_by: [Physics GDD, Level GDD, Perception GDD]
 
+  - name: analog_radial_deadzone
+    expression: "v_norm = (0,0) if r <= r_inner else (v_raw / r if r >= r_outer else (v_raw / r) * ((r - r_inner) / (r_outer - r_inner)))"
+    source: design/gdd/input-system.md  # D1 (rev 2026-09-21)
+    output_range: "[0.0, 1.0] normalized vector magnitude"
+    variables: [v_raw, r, r_inner, r_outer, v_norm]
+    note: "Radial Deadzone Normalization (D1): Filters physical stick drift below 0.15 and scales magnitude continuously to 1.0 at 0.95."
+    consumed_by: [Input System GDD, Player Controller GDD, Camera Rig GDD]
+
+  - name: throw_input_buffer_snap_predicate
+    expression: "Admission = ADMIT_AND_SNAP if (delta_t_release <= input_buffer_window_s and V_ground < throw_velocity_snap_threshold and H_clearance >= uncrouch_clearance_height) else (ADMIT_STATIONARY if (V_ground == 0 and H_clearance >= uncrouch_clearance_height) else (REJECT_MOVING if V_ground >= throw_velocity_snap_threshold else REJECT_CLEARANCE))"
+    source: design/gdd/input-system.md  # D2 (rev 2026-09-21)
+    output_range: "Enum in {ADMIT_AND_SNAP, ADMIT_STATIONARY, REJECT_MOVING, REJECT_CLEARANCE}"
+    variables: [delta_t_release, input_buffer_window_s, V_ground, throw_velocity_snap_threshold, H_clearance, uncrouch_clearance_height, Admission]
+    note: "Throw Input Buffer and Velocity Snap Predicate (D2): 150 ms window snaps speed to 0 if < 1.0 m/s during stick release; crouch auto-stands if H_clearance >= 1.8 m."
+    consumed_by: [Input System GDD, Player Noise GDD, Player Controller GDD]
+
+  - name: camera_look_sensitivity_curve
+    expression: "Delta_theta_mouse = delta_p * S_mouse * 0.1 deg; Delta_theta_gamepad = (v_stick / r_look) * (r_look ^ gamma) * S_stick * delta_t"
+    source: design/gdd/input-system.md  # D3 (rev 2026-09-21)
+    output_range: "Euler delta angles (deg/frame)"
+    variables: [delta_p, S_mouse, v_stick, r_look, gamma, S_stick, delta_t]
+    note: "Camera Look Sensitivity & Exponential Response Curve (D3): 1:1 linear mouse response, gamma = 1.5 non-linear exponential curve for gamepad right stick."
+    consumed_by: [Input System GDD, Camera Rig GDD]
+
+  - name: webgl_dpi_viewport_scaling
+    expression: "delta_p_calibrated = delta_p_raw * (W_render / (W_canvas * DPR))"
+    source: design/gdd/input-system.md  # D4 (rev 2026-09-21)
+    output_range: "Calibrated pixel delta matching PC Windows physical feel"
+    variables: [delta_p_raw, W_render, W_canvas, DPR, delta_p_calibrated]
+    note: "WebGL DPI & Viewport Scaling Factor (D4): Compensates for non-1.0 Device Pixel Ratio and CSS canvas scaling on browser WebGL builds."
+    consumed_by: [Input System GDD]
+
 constants:
   - name: min_wall_thickness
     value: 0.10  # m — minimum solid wall thickness invariant (D6)
@@ -1025,14 +1057,14 @@ burst_throw:
     note: "If stick release occurs within this window prior to throw input, player movement speed is sampled against throw_velocity_snap_threshold."
     source: design/gdd/player-noise.md  # B7 / F4
     owned_by: "Player Noise GDD (Player Controller co-sign)"
-    consumed_by: [Player Noise GDD, Player Controller GDD]
+    consumed_by: [Player Noise GDD, Player Controller GDD, Input System GDD]
   - name: throw_velocity_snap_threshold
     value: 1.0  # m/s — stationary velocity snap threshold during stick release (rev 2026-09-20)
     safe_range: "[0.5, 1.5] m/s"
     note: "If player speed is < 1.0 m/s during stick release within input_buffer_window_s, controller snaps velocity to 0 and executes throw without swallowing input. If >= 1.0 m/s, rejects as THROW_WHILE_MOVING_REJECTED."
     source: design/gdd/player-noise.md  # B7 / F4
     owned_by: "Player Noise GDD (Player Controller co-sign)"
-    consumed_by: [Player Noise GDD, Player Controller GDD]
+    consumed_by: [Player Noise GDD, Player Controller GDD, Input System GDD]
   - name: throw_release_height
     value: 1.5  # m — Burst release height above feet for unified upright standing stance (rev 2026-09-20)
     safe_range: "[1.2, 1.8] m"
@@ -1103,6 +1135,77 @@ burst_throw:
     source: design/gdd/player-noise.md  # F5 pickup reach origin (rev 2026-09-19)
     owned_by: "Player Noise GDD"
     consumed_by: [Player Noise GDD, Level GDD]
+
+input_system:
+  - name: analog_deadzone_inner
+    value: 0.15  # scalar — inner radial deadzone for analog sticks
+    safe_range: "[0.05, 0.35]"
+    note: "Defines threshold below which stick inputs are clamped to zero, eliminating physical stick drift."
+    source: design/gdd/input-system.md  # D1 / Tuning Knobs
+    consumed_by: [Input System GDD, Player Controller GDD, Camera Rig GDD]
+
+  - name: analog_deadzone_outer
+    value: 0.95  # scalar — outer radial deadzone for analog sticks
+    safe_range: "[0.85, 0.99]"
+    note: "Defines threshold at which stick input reaches maximum 1.0 magnitude, accommodating mechanical travel wear."
+    source: design/gdd/input-system.md  # D1 / Tuning Knobs
+    consumed_by: [Input System GDD, Player Controller GDD, Camera Rig GDD]
+
+  - name: look_response_exponent
+    value: 1.5  # scalar — non-linear response exponent for gamepad look stick
+    safe_range: "[1.0, 2.2]"
+    note: "Exponential curve gamma applied to right stick magnitude for fine aiming around neutral position."
+    source: design/gdd/input-system.md  # D3 / Tuning Knobs
+    consumed_by: [Input System GDD, Camera Rig GDD]
+
+  - name: gamepad_look_speed_deg_per_s
+    value: 120.0  # deg/s — maximum camera rotation speed for gamepad
+    safe_range: "[60.0, 240.0] deg/s"
+    note: "Camera yaw/pitch speed at full right-stick deflection."
+    source: design/gdd/input-system.md  # D3 / Tuning Knobs
+    consumed_by: [Input System GDD, Camera Rig GDD]
+
+  - name: mouse_sensitivity_multiplier
+    value: 1.0  # scalar — default multiplier for mouse look delta
+    safe_range: "[0.1, 3.0]"
+    note: "Linear sensitivity scale factor for mouse delta input."
+    source: design/gdd/input-system.md  # D3 / Tuning Knobs
+    consumed_by: [Input System GDD, Camera Rig GDD]
+
+  - name: uncrouch_clearance_height
+    value: 1.80  # m — minimum vertical clearance required to stand up or throw Burst
+    safe_range: "[1.60, 2.20] m"
+    note: "SphereCast clearance gate height checking for overhead E20 solid obstacles."
+    source: design/gdd/input-system.md  # C3 / C4 / C5
+    consumed_by: [Input System GDD, Player Controller GDD, Player Noise GDD]
+
+  - name: uncrouch_sphere_radius
+    value: 0.20  # m — radius of SphereCast used for overhead clearance checks
+    safe_range: "[0.10, 0.30] m"
+    note: "Radial sweep cushion for vertical clearance raycast."
+    source: design/gdd/input-system.md  # C3
+    consumed_by: [Input System GDD, Physics GDD]
+
+  - name: hidespot_exit_threshold
+    value: 0.60  # scalar — stick deflection magnitude required to initiate HideSpot exit
+    safe_range: "[0.40, 0.90]"
+    note: "Threshold preventing accidental exit from locker or desk on minor stick bumps."
+    source: design/gdd/input-system.md  # C6 / Tuning Knobs
+    consumed_by: [Input System GDD, Player Movement & Hide GDD]
+
+  - name: hidespot_exit_sustain_time
+    value: 0.10  # s — sustained duration required for exit deflection
+    safe_range: "[0.05, 0.30] s"
+    note: "Continuous time requirement for stick deflection toward exit vector before triggering egress."
+    source: design/gdd/input-system.md  # C6 / Tuning Knobs
+    consumed_by: [Input System GDD, Player Movement & Hide GDD]
+
+  - name: throw_cooldown_s
+    value: 0.50  # s — minimum cooldown between consecutive Burst throw attempts
+    safe_range: "[0.30, 1.00] s"
+    note: "Locks throw action during arm swing animation, preventing ammo rapid-spam."
+    source: design/gdd/input-system.md  # E5 / Tuning Knobs
+    consumed_by: [Input System GDD, Player Noise GDD]
 
 guard_noise_response:
   - name: noise_response_profile
