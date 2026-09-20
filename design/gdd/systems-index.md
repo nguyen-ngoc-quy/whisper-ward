@@ -47,7 +47,7 @@ demo. See the concept's review history for the fully-pinned contract surface
 | 4 | Alert propagation | AI & Perception | Vertical Slice | Not Started | — | Perception, Guard AI, Event bus |
 | 5 | Player Movement & Hide (`HideSpot`) | Gameplay | Target | **Approved** (2026-09-20 — confirmation re-review in lean mode; all 8 blocking items and 4 recommendations verified landed; D1 standoff parameterized against catch_range; D2 joint config validation active; D4 through-spot escape path expanded to 5.52 m with 2.5 s dwell; corridor parallel prop layout permitted; pure-pivot translational lock $\Delta \vec{p} == \vec{0}$; headless CI test taxonomy clean ⇒ APPROVED final) | `design/gdd/player-movement-hide.md` | Player Controller, Physics, Event bus, Level |
 | 6 | Camera system (static, low-scope) | Gameplay | Target | Not Started | — | Perception, Alert propagation, Level, Event bus |
-| 7 | Suspicion Meter / Grade operator | Gameplay | MVP | Not Started | — | Perception, Guard AI, Event bus, Save/Session state |
+| 7 | Suspicion Meter / Grade operator | Gameplay | MVP | **Approved** (2026-09-20 — adversarial panel review + 9-blocker revision approved; multi-guard chase pooling, clean Burst zero-deduction exemption, planar azimuth chevron projection, and F15 floor chain locked) | `design/gdd/suspicion-meter-grade.md` | Perception, Guard AI, Event bus, Save/Session state |
 | 8 | Level / Content | Content | Vertical Slice | Not Started | — | NavMesh, Scene/Asset mgmt, Event bus |
 | 9 | Win/Lose & Respawn | Meta | Target | Not Started | — | Guard AI, Grade, Player Controller |
 | 10 | Suspicion Attribution telemetry (FSM trace) | UI & Feedback | MVP (dev-only in MVP) | Not Started | — | Guard AI, Perception, Event bus |

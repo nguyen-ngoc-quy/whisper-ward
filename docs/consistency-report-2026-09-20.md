@@ -4,7 +4,7 @@ Date: 2026-09-20
 
 ## Scope
 
-Registry entries checked: 10 formula definitions, 81 scalar/config constants, plus registered noise, ballistics, physics, HideSpot, lifecycle, event, and fixture contracts.
+Registry entries checked: 13 active formula definitions, 81 scalar/config constants, plus registered noise, ballistics, physics, HideSpot, suspicion/grade, lifecycle, event, and fixture contracts.
 
 GDDs scanned:
 - `design/gdd/game-concept.md`
@@ -14,6 +14,7 @@ GDDs scanned:
 - `design/gdd/player-movement-hide.md`
 - `design/gdd/player-third-person-controller.md`
 - `design/gdd/sound_performance_audit.md`
+- `design/gdd/suspicion-meter-grade.md`
 - `design/fixtures/noise-fixture-spec.md`
 - `design/levels/mvp-burst-route-fixture.md`
 
@@ -46,6 +47,12 @@ GDDs scanned:
    - Added formulas D1 (`hidespot_catch_reach_resolvable`), D2 (`hidespot_vertical_offset_authoring_margin`), and D4 (`through_spot_escape_time_invariant`) to `design/registry/entities.yaml`.
    - Registered tuning constants `standoff_margin` ($0.10\text{ m}$), `t_margin_react` ($0.3\text{ s}$), `t_spotfront_verify_through` ($2.5\text{ s}$) and vector `aperture_portal_target` to `design/registry/entities.yaml`.
    - Updated `auth_margin` note with load-time joint constraint: $\text{delta\_y\_tolerance} - \text{auth\_margin} \ge 0.3\text{ m}$.
+
+7. **Suspicion Meter / Grade Operator Synchronization (2026-09-20)**:
+   - Verified that all scoring constants (`grade_weight_chase: 25`, `grade_weight_fruitless: 10`, `grade_weight_capture: 50`, `grade_weight_residual: 10`, `grade_penalty_cap: 90`, `grade_threshold_s: 90`, `grade_threshold_a: 75`, `grade_threshold_b: 60`, `meter_display_scale: 100`) align exactly across `entities.yaml`, ADR-0004, and `design/gdd/suspicion-meter-grade.md`.
+   - Added formula definitions D1 (`dominant_threat_selection_ratio`) and D6/D7 (`room_grade_quality_score`) to `design/registry/entities.yaml`.
+   - Updated bidirectional `consumed_by` references for `T_chase` and `k_res` to include `Suspicion/Grade GDD`.
+   - Verified F15 forgiveness floor chain ($0.0 \le \text{forgiveness\_floor} < T_{\text{floor}}$) holds with positive margin ($0.030 \le 0.045$) across Perception GDD, registry, and Suspicion/Grade GDD.
 
 ## Conflicts Found
 

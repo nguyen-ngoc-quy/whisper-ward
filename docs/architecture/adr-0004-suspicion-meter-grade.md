@@ -62,7 +62,7 @@ All projections are scoped by `(session_id, attempt_epoch)` and guard/room ident
 where applicable. Incident deduplication uses:
 
 ```text
-(session_id, attempt_epoch, entry_id, event_type)
+(session_id, attempt_epoch, entry_id, guard_eid, event_type)
 ```
 
 Records from stale epochs are ignored. Duplicate delivery and retry do not create a

@@ -95,6 +95,22 @@ formula_definitions:
     note: "D4 through-spot escape time invariant (AC10, approved 2026-09-20): guarantees that a crouching player diving through a dual-exit spot (vent/crawlway) has sufficient travel budget (pathLen <= 5.52 m at starters) to escape outside guard LOS before the witnessing guard arrives and completes spot-front verification."
     consumed_by: [Level GDD, Guard AI FSM GDD, Hide System GDD]
 
+  - name: dominant_threat_selection_ratio
+    expression: "r_threat,i = A_i / T_entry,i (if T_entry,i > 0 else 0.0); g* = null if max(A_i) == 0 else argmax(r_threat,i)"
+    source: design/gdd/suspicion-meter-grade.md  # D1 (rev 2026-09-20)
+    output_range: "[0.0, 25.0] (finite non-negative ratio; typically [0.0, 1.0] in Quiet, >= 1.0 in Investigate; null when max(A_i) == 0)"
+    variables: [A_i, T_entry_i, r_threat_i, g_star]
+    note: "Dominant Threat Selection Ratio (D1, rev 2026-09-20): Multi-guard threat arbitration for single-chevron HUD rendering and audio focus. If max(A_i) == 0, g* is null and chevron is hidden. Tie-breaking cascade: (1) max accumulator A_i, (2) min Euclidean distance EuclidXZ(guard, player), (3) lexicographical ordinal comparison of guard_eid."
+    consumed_by: [Suspicion/Grade GDD, HUD/UI GDD, Audio GDD]
+
+  - name: room_grade_quality_score
+    expression: "S_room = 100.0 if (Status == Completed and M == 0) else max(10.0, 100.0 - min(grade_penalty_cap, P_incident,room + P_residual,room)); P_incident,room = min(grade_penalty_cap, sum(N_chase,i * W_chase)); P_residual,room = sum((w_i / W_total) * P_residual,i)"
+    source: design/gdd/suspicion-meter-grade.md  # D4-D7 (rev 2026-09-20)
+    output_range: "[0.0, 100.0] pts (completed escape floor 10.0 pts; terminal Capture 0.0 pts; M=0 sanctuary room 100.0 pts)"
+    variables: [S_room, w_i, W_total, P_incident_room, P_residual_room, P_residual_i, W_chase, W_capture, W_residual, N_chase, N_capture, R_final, R_max, grade_penalty_cap, M, Status]
+    note: "Global-incident room aggregate score (D4-D7, rev 2026-09-20): Chase penalties are pooled globally per room without multi-guard dilution. Exposure weighting w_i applies strictly to residual wariness snapshots. Clean Burst distractions incur 0 direct penalty (W_fruitless obsolete). Guaranteed 10.0 pt completion floor for non-capture runs. Rank S requires sum(N_chase) == 0."
+    consumed_by: [Suspicion/Grade GDD, Telemetry GDD, HUD/UI GDD]
+
 constants:
   - name: T_base
     value: 0.30
@@ -107,7 +123,7 @@ constants:
     safe_range: "[0.85, 1.00]"  # ≡ A_max — meter scale caps the threshold; > 1.00 is unreachable by the accumulator
     alias_of: A_max
     source: design/gdd/perception.md  # F1/F2/F9; prototype-validated
-    consumed_by: [Perception GDD, Guard AI FSM GDD]
+    consumed_by: [Perception GDD, Guard AI FSM GDD, Suspicion/Grade GDD]
 
   - name: T_floor
     value: 0.06  # starter value at T_base 0.30 — the LOCK is the relation, not a literal
@@ -153,7 +169,7 @@ constants:
     value: 0.24
     safe_range: "[0.15, 0.30]"
     source: design/gdd/perception.md  # F5
-    consumed_by: [Perception GDD]
+    consumed_by: [Perception GDD, Suspicion/Grade GDD]
 
   - name: R_max
     value: 1.00
@@ -672,7 +688,7 @@ constants:
 
 suspicion_grade:
   grade_weight_chase: 25
-  grade_weight_fruitless: 10
+  grade_weight_fruitless: 0  # was: 10 before 2026-09-20; obsolete per CD ruling & Pillar 3, clean distractions incur 0 direct penalty
   grade_weight_capture: 50
   grade_weight_residual: 10
   grade_penalty_cap: 90
