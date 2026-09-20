@@ -111,6 +111,54 @@ formula_definitions:
     note: "Global-incident room aggregate score (D4-D7, rev 2026-09-20): Chase penalties are pooled globally per room without multi-guard dilution. Exposure weighting w_i applies strictly to residual wariness snapshots. Clean Burst distractions incur 0 direct penalty (W_fruitless obsolete). Guaranteed 10.0 pt completion floor for non-capture runs. Rank S requires sum(N_chase) == 0."
     consumed_by: [Suspicion/Grade GDD, Telemetry GDD, HUD/UI GDD]
 
+  - name: cumulative_path_length
+    expression: "d_path = sum_{k=0}^{N-2} ||p_{k+1} - p_k||_2 if (status != PathInvalid and N >= 2) else infinity"
+    source: design/gdd/navmesh-pathfinding.md  # D1 (rev 2026-09-20)
+    output_range: "[0.0, +infinity) m"
+    variables: [status, N, p_k, d_path]
+    note: "Cumulative Path Length (D1, rev 2026-09-20): Continuous 3D piecewise-linear path distance along NavMeshPath.corners polyline. Evaluates to infinity on PathInvalid or N < 2. Serves as the authoritative distance metric for F10 catch-gate proximity."
+    consumed_by: [NavMesh GDD, Guard AI FSM GDD, Perception GDD]
+
+  - name: catch_gate_state
+    expression: "S_catch(t) = ACTIVE if (status == PathComplete and d_path <= catch_range) else (INACTIVE if (status != PathComplete or d_path > catch_range + hyst) else S_catch(t - Delta_t))"
+    source: design/gdd/navmesh-pathfinding.md  # D2 (rev 2026-09-20)
+    output_range: "Enum in {ACTIVE, INACTIVE}"
+    variables: [status, d_path, catch_range, hyst, S_catch]
+    note: "Chase Catch-Gate Path Distance & Hysteresis State (D2, rev 2026-09-20): Dual-boundary Schmidt trigger for catch-meter accrual. Requires PathComplete and d_path <= catch_range to activate; pauses accrual when d_path > catch_range + hyst or path becomes partial/invalid."
+    consumed_by: [NavMesh GDD, Guard AI FSM GDD, Perception GDD]
+
+  - name: arrival_precedence
+    expression: "State_arrive = Arrived if (EuclidXZ(p_guard, p_target) <= eps_arrive) else (PathEnd if (status == PathPartial and EuclidXZ(p_guard, p_corner_last) <= eps_arrive) else Traversing)"
+    source: design/gdd/navmesh-pathfinding.md  # D3 (rev 2026-09-20)
+    output_range: "Enum in {Arrived, PathEnd, Traversing}"
+    variables: [p_guard, p_target, p_corner_last, eps_arrive, status, State_arrive]
+    note: "Arrival Predicate & Precedence Function (D3, rev 2026-09-20): Classifies destination arrival into mutually exclusive states. Arrived takes strict precedence over PathEnd if both conditions coincide (FSM rev 3.8 lock)."
+    consumed_by: [NavMesh GDD, Guard AI FSM GDD]
+
+  - name: chase_repath_trigger
+    expression: "Trigger_repath = (t_since_last_path >= t_repath_min) and ((t_since_last_path >= T_repath) or (EuclidXZ(p_player, p_player_last_path) >= Delta_p_trigger))"
+    source: design/gdd/navmesh-pathfinding.md  # D4 (rev 2026-09-20)
+    output_range: "Boolean in {TRUE, FALSE}"
+    variables: [t_since_last_path, t_repath_min, T_repath, p_player, p_player_last_path, Delta_p_trigger, Trigger_repath]
+    note: "Chase Re-Pathing Dual-Trigger Predicate (D4, rev 2026-09-20): Throttles CalculatePath queries to protect 16.6 ms frame budget. Evaluates periodic sensing tick and player Euclidean planar displacement, with rate floor clamp t_repath_min (0.10 s, 10 Hz ceiling)."
+    consumed_by: [NavMesh GDD, Guard AI FSM GDD]
+
+  - name: navmesh_bake_voxel_invariant
+    expression: "v_size <= r_guard / 3"
+    source: design/gdd/navmesh-pathfinding.md  # D5 (rev 2026-09-20)
+    output_range: "Boolean in {PASS, FAIL}; v_size <= 0.1333 m at starter r_guard 0.40 m"
+    variables: [v_size, r_guard]
+    note: "NavMesh Bake Voxel Resolution Invariant (D5, rev 2026-09-20): Compilation ceiling ensuring agent capsule geometry clears all authored passageways without topological disconnections."
+    consumed_by: [NavMesh GDD, Level GDD]
+
+  - name: corridor_width_invariant
+    expression: "W_corridor >= 2 * r_guard + margin_corridor"
+    source: design/gdd/navmesh-pathfinding.md  # D6 (rev 2026-09-20)
+    output_range: "Boolean in {PASS, FAIL}; W_corridor >= 1.20 m at starters"
+    variables: [W_corridor, r_guard, margin_corridor]
+    note: "Corridor Width Clearance Invariant (D6, rev 2026-09-20): Level certification constraint guaranteeing unjammed two-way passing and clean RVO avoidance (floor 1.20 m at r_guard 0.40 m, margin 0.40 m)."
+    consumed_by: [NavMesh GDD, Level GDD]
+
 constants:
   - name: T_base
     value: 0.30
@@ -333,7 +381,7 @@ constants:
     value: 0.40  # m — guard collision radius used in the F10 catch-range invariant
     locked: true  # rev 3.3 (J8): no safe range — the F10 formula-table operand band [0.35, 0.45] was stale knob-form and was struck
     source: design/gdd/perception.md  # F10 (rev 3.2 — declared operand of catch_range_invariant; operand band struck rev 3.3)
-    consumed_by: [Perception GDD, Guard AI FSM GDD]
+    consumed_by: [Perception GDD, Guard AI FSM GDD, NavMesh GDD]
 
   - name: r_player
     value: 0.35  # m — player collision radius used in the F10 catch-range invariant
@@ -503,7 +551,7 @@ constants:
     safe_range: "[0.2, 0.5] m"
     note: "Arrival predicate tolerance (rev 3.7 C1.2): XZ distance to the navmesh-sampled target OR the spot-front hold position at a tick boundary — the arrival arm of the min(arrival, path-end) give-up clock start"
     source: design/gdd/guard-ai-fsm.md  # C1.2 / D1 (rev 3.7)
-    consumed_by: [Guard AI FSM GDD]
+    consumed_by: [Guard AI FSM GDD, NavMesh GDD]
 
   - name: eps_stop
     value: 0.1  # m
@@ -685,6 +733,62 @@ constants:
     source: design/gdd/player-third-person-controller.md  # F5 rustle_event (rev 2026-08-27); player-noise.md B5
     owned_by: "Player Controller GDD (Player Noise co-sign)"
     consumed_by: [Player Controller GDD, Player Noise GDD]
+
+  - name: t_repath_min
+    value: 0.10  # s
+    safe_range: "[0.05, 0.15] s"
+    note: "Hard rate-limiting clamp on Chase re-pathing (10 Hz ceiling). Protects the 60 fps (16.6 ms) frame budget against high-frequency player movement."
+    source: design/gdd/navmesh-pathfinding.md  # D4
+    consumed_by: [NavMesh GDD, Guard AI FSM GDD]
+
+  - name: T_repath
+    value: 0.25  # s
+    safe_range: "[0.20, 0.50] s"
+    note: "Periodic Chase re-pathing cadence. Synchronized with the Perception sensing tick (2-5 Hz)."
+    source: design/gdd/navmesh-pathfinding.md  # D4
+    consumed_by: [NavMesh GDD, Guard AI FSM GDD]
+
+  - name: Delta_p_trigger
+    value: 0.50  # m
+    safe_range: "[0.30, 0.80] m"
+    note: "Player Euclidean displacement threshold triggering an immediate Chase re-path."
+    source: design/gdd/navmesh-pathfinding.md  # D4
+    consumed_by: [NavMesh GDD, Guard AI FSM GDD]
+
+  - name: omega_turn
+    value: 480.0  # deg/s
+    safe_range: "[360.0, 720.0] deg/s"
+    note: "NavMeshAgent angular turning speed for crisp cornering."
+    source: design/gdd/navmesh-pathfinding.md  # C1.2
+    consumed_by: [NavMesh GDD]
+
+  - name: a_max
+    value: 16.0  # m/s^2
+    safe_range: "[12.0, 24.0] m/s^2"
+    note: "NavMeshAgent linear acceleration ensuring immediate speed responsiveness upon alert state transitions."
+    source: design/gdd/navmesh-pathfinding.md  # C1.2
+    consumed_by: [NavMesh GDD]
+
+  - name: v_size
+    value: 0.10  # m
+    safe_range: "[0.05, 0.133] m"
+    note: "Voxel size for NavMeshSurface bake. Bound by invariant v_size <= r_guard / 3."
+    source: design/gdd/navmesh-pathfinding.md  # D5
+    consumed_by: [NavMesh GDD, Level GDD]
+
+  - name: margin_corridor
+    value: 0.40  # m
+    safe_range: "[0.20, 0.60] m"
+    note: "Extra horizontal corridor clearance added to 2 * r_guard for W_corridor >= 1.20 m invariant."
+    source: design/gdd/navmesh-pathfinding.md  # D6
+    consumed_by: [NavMesh GDD, Level GDD]
+
+  - name: r_avoid
+    value: 0.45  # m
+    safe_range: "[0.42, 0.55] m"
+    note: "RVO obstacle avoidance radius (r_guard 0.40 m + 0.05 m buffer) to prevent capsule snagging."
+    source: design/gdd/navmesh-pathfinding.md  # C1.8
+    consumed_by: [NavMesh GDD]
 
 suspicion_grade:
   grade_weight_chase: 25
