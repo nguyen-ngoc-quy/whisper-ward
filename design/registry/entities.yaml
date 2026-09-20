@@ -239,6 +239,38 @@ formula_definitions:
     note: "WebGL DPI & Viewport Scaling Factor (D4): Compensates for non-1.0 Device Pixel Ratio and CSS canvas scaling on browser WebGL builds."
     consumed_by: [Input System GDD]
 
+  - name: ingress_admission_predicate
+    expression: "AdmitPredicate(E) = REJECT_DUPLICATE if DedupKey(E) in K_epoch else (ADMIT_PENDING if |Q_pending| < C_queue else (BACKPRESSURE_RETRY if r < N_retry_max else REJECT_OVERFLOW))"
+    source: design/gdd/event-messaging-bus.md  # D1 (rev 2026-09-21)
+    output_range: "Enum in {REJECT_DUPLICATE, ADMIT_PENDING, BACKPRESSURE_RETRY, REJECT_OVERFLOW}"
+    variables: [E, DedupKey, K_epoch, Q_pending, C_queue, r, N_retry_max]
+    note: "Ingress Admission and Bounded Queue Predicate (D1): Evaluates event envelope admission against epoch dedup table and 256-envelope bounded queue capacity with 3 retry attempts."
+    consumed_by: [Event Bus GDD, Player Noise GDD, Perception GDD, Guard AI FSM GDD]
+
+  - name: deterministic_ordering_tuple
+    expression: "OrderTuple(E) = (Phi, t_virtual, Rank_class, PublisherSeq); E1 < E2 <=> OrderTuple(E1) < OrderTuple(E2)"
+    source: design/gdd/event-messaging-bus.md  # D2 (rev 2026-09-21)
+    output_range: "Lexicographically ordered 4-tuple establishing strict dispatch precedence"
+    variables: [Phi, t_virtual, Rank_class, PublisherSeq, E]
+    note: "Deterministic Lexicographical Ordering Tuple (D2): Guarantees identical dispatch sequence across platforms (Phase, VirtualTimestamp, ClassRank, PublisherSequence)."
+    consumed_by: [Event Bus GDD, Perception GDD, Guard AI FSM GDD, Suspicion/Grade GDD]
+
+  - name: perception_handoff_resolution
+    expression: "ObligationStatus(E, L_snapshot) = COMPLETE_DELIVERED if forall L in L_snapshot Ack(L,E) in {Accepted, Duplicate} else (HOLD_PENDING if exists L with Ack(L,E)==Retry and r_L < N_retry_max else FAILED_EXHAUSTED)"
+    source: design/gdd/event-messaging-bus.md  # D3 (rev 2026-09-21)
+    output_range: "Enum in {COMPLETE_DELIVERED, HOLD_PENDING, FAILED_EXHAUSTED}"
+    variables: [E, L_snapshot, Ack, L, r_L, N_retry_max]
+    note: "Perception Handoff Resolution Contract (D3): Two-way acknowledgment for NoisePublished to Perception hearing queue handoff with retry and reject-newest backpressure."
+    consumed_by: [Event Bus GDD, Perception GDD, Player Noise GDD]
+
+  - name: epoch_barrier_invalidation_predicate
+    expression: "EpochFilter(E, Xi_new) = RETAIN if E.AttemptEpoch == Xi_new else (INVALIDATE_STALE: Purge(E) and EmitDiagnostic(stale-epoch))"
+    source: design/gdd/event-messaging-bus.md  # D4 (rev 2026-09-21)
+    output_range: "Enum in {RETAIN, INVALIDATE_STALE}"
+    variables: [E, AttemptEpoch, Xi_new]
+    note: "Epoch Barrier Invalidation Predicate (D4): Filters and purges pending envelopes and dedup entries whose attempt_epoch is strictly less than Xi_new upon room reset or player death."
+    consumed_by: [Event Bus GDD, Guard AI FSM GDD, Perception GDD, Save/Session State GDD]
+
 constants:
   - name: min_wall_thickness
     value: 0.10  # m — minimum solid wall thickness invariant (D6)
@@ -1207,6 +1239,35 @@ input_system:
     source: design/gdd/input-system.md  # E5 / Tuning Knobs
     consumed_by: [Input System GDD, Player Noise GDD]
 
+event_messaging_bus:
+  - name: max_active_subscribers_per_event
+    value: 32  # max subscribers per event type
+    safe_range: "[8, 128]"
+    note: "Maximum active listeners per event type before pre-allocated pool expansion warning."
+    source: design/gdd/event-messaging-bus.md  # Tuning Knobs / ADR-0001
+    consumed_by: [Event Bus GDD]
+
+  - name: ingress_dedup_capacity
+    value: 4096  # entries in dedup table per epoch
+    safe_range: "[1024, 16384]"
+    note: "Maximum distinct event identities retained in dedup history within a single attempt epoch."
+    source: design/gdd/event-messaging-bus.md  # Tuning Knobs / D1
+    consumed_by: [Event Bus GDD]
+
+  - name: retroactive_timestamp_tolerance_s
+    value: 0.001  # s — tolerance window for out-of-order timestamps
+    safe_range: "[0.000, 0.016] s"
+    note: "Slack allowance for float rounding jitter on event publication timestamps."
+    source: design/gdd/event-messaging-bus.md  # Tuning Knobs / E2
+    consumed_by: [Event Bus GDD]
+
+  - name: phase_drain_budget_warning_ms
+    value: 5.0  # ms — execution time warning threshold for a single phase drain
+    safe_range: "[1.0, 10.0] ms"
+    note: "Diagnostic threshold warning when event processing within a single virtual clock phase exceeds budget."
+    source: design/gdd/event-messaging-bus.md  # Tuning Knobs / G
+    consumed_by: [Event Bus GDD]
+
 guard_noise_response:
   - name: noise_response_profile
     value: MVP  # immutable session behavior profile; Target requires AlertPropagation readiness
@@ -1449,9 +1510,9 @@ player_noise_budget:
     value: 256
     safe_range: "[64, 1024] immutable envelopes"
     note: "Bounded Event Bus ingress capacity. A full queue retries deterministically before rejection; an unrecoverable rejection records queue-overflow-rejected with the envelope identity. No accepted sensing fact is silently dropped."
-    source: docs/architecture/adr-0001-event-messaging-bus.md  # bounded transport contract 2026-08-29
-    owned_by: "Event Bus ADR / Technical Setup"
-    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, sound_performance_audit.md]
+    source: docs/architecture/adr-0001-event-messaging-bus.md  # bounded transport contract 2026-08-29; design/gdd/event-messaging-bus.md Tuning Knobs
+    owned_by: "Event Bus GDD / ADR-0001"
+    consumed_by: [Event Bus GDD, Player Noise GDD, Perception GDD, Guard AI FSM GDD, sound_performance_audit.md]
   - name: perception_hearing_queue_capacity
     value: 128
     safe_range: "[32, 512] raw facts"
@@ -1477,16 +1538,16 @@ player_noise_budget:
     value: 3
     safe_range: "[1, 8] attempts"
     note: "Maximum deterministic retry attempts before a full bounded queue is reported as rejected. Identity deduplication occurs first: an existing admitted, handoff_pending, or delivered identity is reported as Duplicate without retry/backpressure; only a new identity enters retry/backpressure and reuses its immutable envelope identity."
-    source: docs/architecture/adr-0001-event-messaging-bus.md  # retry/backpressure contract 2026-08-29
-    owned_by: "Event Bus ADR / Technical Setup"
-    consumed_by: [Player Noise GDD, Perception GDD, sound_performance_audit.md]
+    source: docs/architecture/adr-0001-event-messaging-bus.md  # retry/backpressure contract 2026-08-29; design/gdd/event-messaging-bus.md Tuning Knobs
+    owned_by: "Event Bus GDD / ADR-0001"
+    consumed_by: [Event Bus GDD, Player Noise GDD, Perception GDD, sound_performance_audit.md]
   - name: bounded_queue_overflow_policy
     value: reject-newest
     safe_range: "enum: reject-newest"
     note: "For Event Bus pending envelopes, Perception raw facts, deferred boundaries, and hearing work: retry/backpressure first, preserve older queued items, reject only the newest item after retry exhaustion, serialize its identity/epoch/timestamp/queue metrics, and fail certification closed. No silent drop, oldest eviction, or implicit stretching."
-    source: design/gdd/player-noise.md  # Pass A revision B (2026-08-29)
-    owned_by: "Event Bus ADR + Perception GDD (Player Noise co-sign)"
-    consumed_by: [Player Noise GDD, Perception GDD, Guard AI FSM GDD, sound_performance_audit.md]
+    source: design/gdd/player-noise.md  # Pass A revision B (2026-08-29); design/gdd/event-messaging-bus.md C4/D1
+    owned_by: "Event Bus GDD + Perception GDD (Player Noise co-sign)"
+    consumed_by: [Event Bus GDD, Player Noise GDD, Perception GDD, Guard AI FSM GDD, sound_performance_audit.md]
   - name: burst_collision_timeout_order_policy
     value: integer-fixed-tick-contact-before-or-at-timeout
     safe_range: "enum: integer-fixed-tick-contact-before-or-at-timeout"

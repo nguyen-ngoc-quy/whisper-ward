@@ -55,7 +55,7 @@ demo. See the concept's review history for the fully-pinned contract surface
 | 12 | NavMesh / Pathfinding | Core | MVP | **Approved** (2026-09-20 — lean review approved; 8/8 core sections + 21 ACs verified; D1–D6 formulas & constants registered in entities.yaml; zero cross-doc conflicts) | `design/gdd/navmesh-pathfinding.md` | Physics, Scene/Asset mgmt |
 | 13 | Audio & UI feedback *(inferred)* | UI & Feedback | MVP | Not Started | — | Player Controller, Event bus, Level |
 | 14 | HUD / UI *(inferred)* | UI & Feedback | Vertical Slice | Not Started | — | Grade, Telemetry, Event bus |
-| 15 | Event / Messaging bus *(inferred)* | Core | MVP | Not Started | — | — |
+| 15 | Event / Messaging bus *(inferred)* | Core | MVP | **Approved** (2026-09-21 — lean review approved; 8/8 core sections + 12 ACs verified; D1–D4 formulas & constants registered in entities.yaml; zero cross-doc conflicts) | `design/gdd/event-messaging-bus.md` | — |
 | 16 | Save / Session state *(inferred)* | Persistence | Target | Not Started | — | Grade, HUD |
 | 17 | Scene / Asset management *(inferred)* | Core | Vertical Slice | Not Started | — | Event bus |
 | 18 | Physics & collision config *(inferred)* | Core | MVP | **Approved** (2026-09-21 — lean review approved; 8/8 core sections + 16 ACs verified; D1–D6 formulas & constants registered in entities.yaml; zero cross-doc conflicts) | `design/gdd/physics-collision-config.md` | — |
