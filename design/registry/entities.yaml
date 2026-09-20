@@ -71,6 +71,30 @@ formula_definitions:
     variables: [V_chase, V_run, rho_chase]
     note: "rev 2026-08-26 (/consistency-check G3 reconciliation): starter V_chase 7.50 is PINNED ABSOLUTE per player-third-person-controller.md :321 — the product form above is the HISTORICAL DERIVATION + coordinated-retune rule only; V_chase does NOT auto-scale with V_run. Solo-tuning ceiling V_run <= 6.81 (= 7.50/1.10, see V_run note rev 2026-08-25); crossing it requires a coordinated V_chase retune re-passing this invariant. The '>= 7.92 at band max' line is the requirement AT that corner if ever reached via coordinated retune — not an automatic consequence."
 
+  - name: hidespot_catch_reach_resolvable
+    expression: "path(guard_hold -> proxy(interior_position)) <= catch_range OR (EuclidXZ(guard_hold, interior_position) <= catch_range AND |DeltaY(interior_position, floor_worst)| <= delta_y_tolerance AND Linecast_clear(guard_eye -> aperture_portal_target))"
+    source: design/gdd/player-movement-hide.md  # D1 (rev 2026-09-20)
+    output_range: "Boolean in {PASS, FAIL}"
+    variables: [guard_hold, interior_position, catch_range, delta_y_tolerance, floor_worst, aperture_portal_target, eps_arrive, standoff_margin]
+    note: "D1 reach-resolvability invariant for HideSpot certification (approved 2026-09-20): ensures the FSM's HideSpotFront catch-gate can engage against the spot interior without capture-immunity dead-bands. Parameterized standoff requires EuclidXZ(guard_hold, interior_position) <= catch_range - eps_arrive - standoff_margin (<= 5.10 m at starters, <= 4.80 m at minimum catch_range 5.20 m). Linecast targets aperture_portal_target with +0.05 m outward offset to avoid prop-mesh self-occlusion."
+    consumed_by: [Guard AI FSM GDD, Level GDD, Hide System GDD]
+
+  - name: hidespot_vertical_offset_authoring_margin
+    expression: "|DeltaY(interior_position, floor_worst)| < delta_y_tolerance - auth_margin"
+    source: design/gdd/player-movement-hide.md  # D2 (rev 2026-09-20)
+    output_range: "Boolean in {PASS, FAIL}"
+    variables: [interior_position, floor_worst, delta_y_tolerance, auth_margin]
+    note: "D2 vertical authoring margin (approved 2026-09-20): ensures authored interior datum stays strictly within the delta_y_tolerance gate with a safety buffer auth_margin. Joint load constraint delta_y_tolerance - auth_margin >= 0.3 m is enforced at config load time (REJECT_CONFIG_AUTH_MARGIN_JOINT_VIOLATION)."
+    consumed_by: [Level GDD, Hide System GDD]
+
+  - name: through_spot_escape_time_invariant
+    expression: "transit = path(guard_spawn, guard_hold) / max(V_relevant, 0.1); pathLen / V_crouch + t_margin_react <= transit + t_spotfront_verify_through"
+    source: design/gdd/player-movement-hide.md  # D4 (rev 2026-09-20)
+    output_range: "Boolean in {PASS, FAIL}"
+    variables: [pathLen, V_crouch, t_margin_react, transit, guard_spawn, guard_hold, V_relevant, t_spotfront_verify_through]
+    note: "D4 through-spot escape time invariant (AC10, approved 2026-09-20): guarantees that a crouching player diving through a dual-exit spot (vent/crawlway) has sufficient travel budget (pathLen <= 5.52 m at starters) to escape outside guard LOS before the witnessing guard arrives and completes spot-front verification."
+    consumed_by: [Level GDD, Guard AI FSM GDD, Hide System GDD]
+
 constants:
   - name: T_base
     value: 0.30
@@ -497,17 +521,38 @@ constants:
   - name: interior_position
     value: "Level/hide-system-authored per hide spot"  # the spot's reference point the player occupies while hidden
     safe_range: "Authored datum — must satisfy D1 reach-resolvability + D2 vertical margin against the worst-case guard floor (player-movement-hide hostage pins)"
-    note: "HideSpot interior reference (player-movement-hide #5 D1/D2, rev 2026-08-26): the static datum the FSM's HideSpotFront catch-gate resolves reach-presence against (NOT the player's live feet). Depth/offset must satisfy the D1 OR-invariant (path leg OR occlusion-clear backstop) and the D2 strict authoring margin below delta_y_tolerance; asserts against proxy(interior_position), never raw spot_position. D1 REVISION 2026-08-26 (review Blk-2): the D1 certification bound is catch_range (5.5) — NOT catch_range + margin (6.0), which is the FSM's retained-accrual/pause bound. A leg at (5.5, 6.0] is certifiable under the retired bound but never engages the catch timer (capture-immunity stalemate)."
-    source: design/gdd/player-movement-hide.md  # D1/D2 (rev 2026-08-26)
+    note: "HideSpot interior reference (player-movement-hide #5 D1/D2, rev 2026-08-26, updated 2026-09-20): the static datum the FSM's HideSpotFront catch-gate resolves reach-presence against (NOT the player's live feet). Depth/offset must satisfy the D1 OR-invariant (path leg OR occlusion-clear backstop) and the D2 strict authoring margin below delta_y_tolerance; asserts against proxy(interior_position), never raw spot_position. D1 REVISION 2026-08-26 (review Blk-2): the D1 certification bound is catch_range (5.5) — NOT catch_range + margin (6.0), which is the FSM's retained-accrual/pause bound. D1 REVISION 2026-09-20: parameterized standoff requires EuclidXZ(guard_hold, interior_position) <= catch_range - eps_arrive - standoff_margin; backstop Linecast targets aperture_portal_target to prevent prop-mesh self-occlusion."
+    source: design/gdd/player-movement-hide.md  # D1/D2 (rev 2026-09-20)
     owned_by: "Level / hide system (authored per spot)"
     consumed_by: [Guard AI FSM GDD, Level GDD, Hide System GDD]
 
   - name: auth_margin
     value: 0.2
     safe_range: "[0.1, 0.4] m"
-    note: "D2 vertical authoring margin (player-movement-hide #5, rev 2026-08-26): offset(interior, floor_worst) < delta_y_tolerance − auth_margin. Larger = safer against lazy authoring but rejects more spot geometry; smaller = permissive but risks over-tolerance spots reaching the gate (capture-immunity). The milestone-0 gate asserts the committed |ΔY| value; margin may re-up after first level blockout"
+    note: "D2 vertical authoring margin (player-movement-hide #5, rev 2026-08-26, updated 2026-09-20): offset(interior, floor_worst) < delta_y_tolerance − auth_margin. Larger = safer against lazy authoring but rejects more spot geometry; smaller = permissive but risks over-tolerance spots reaching the gate (capture-immunity). Load-time joint constraint (rev 2026-09-20): delta_y_tolerance - auth_margin >= 0.3 m is enforced at config load time (REJECT_CONFIG_AUTH_MARGIN_JOINT_VIOLATION), guaranteeing >= 0.20 m step/curb allowance."
     source: design/gdd/player-movement-hide.md  # D2 / Section G
     consumed_by: [Hide System GDD, Level GDD]
+
+  - name: standoff_margin
+    value: 0.10
+    safe_range: "[0.05, 0.20] m"
+    note: "D1 horizontal standoff cushion against minimum catch_range (player-movement-hide #5 §D1, approved 2026-09-20): EuclidXZ(guard_hold, interior_position) <= catch_range - eps_arrive - standoff_margin. Strictly prevents dead-band freeze at lower-bound catch_range = 5.20 m (giving stopped position <= 5.10 m < 5.20 m)."
+    source: design/gdd/player-movement-hide.md  # D1 / Section G
+    consumed_by: [Hide System GDD, Level GDD]
+
+  - name: t_margin_react
+    value: 0.3
+    safe_range: "[0.2, 0.5] s"
+    note: "D4 through-spot escape human reaction and camera re-alignment buffer (player-movement-hide #5 §D4, approved 2026-09-20). Accounts for player reaction delay upon hearing guard approach during vent/through-spot transit."
+    source: design/gdd/player-movement-hide.md  # D4 / Section G
+    consumed_by: [Hide System GDD, Level GDD]
+
+  - name: t_spotfront_verify_through
+    value: 2.5
+    safe_range: "[2.0, 3.5] s"
+    note: "D4 through-spot inspection dwell duration at dual-exit apertures (vents/crawlways) (player-movement-hide #5 §D4, approved 2026-09-20). Extended beyond generic single-exit t_spotfront_verify (1.5 s) to provide player crouch-escape travel budget (pathLen <= 5.52 m at starters)."
+    source: design/gdd/player-movement-hide.md  # D4 / Section G
+    consumed_by: [Guard AI FSM GDD, Level GDD, Hide System GDD]
 
   # --- Player Third-Person Controller knobs (registered Phase 5b 2026-08-22) ---
 
@@ -740,6 +785,13 @@ hide_spot_contract:
       note: "Derived M4 hold datum used by witness/approach certification; eps_arrive remains the registered scalar XZ arrival tolerance and is not replaced by a vector tolerance."
       source: design/gdd/player-movement-hide.md  # D1 / AC4
       owned_by: "Guard AI FSM GDD / Level co-sign"
+      consumed_by: [Guard AI FSM GDD, Level GDD, Hide System GDD]
+    - name: aperture_portal_target
+      value: "Level/hide-system-authored per hide spot"
+      safe_range: "Center of spot entrance portal at height h_portal = min(0.8 m, aperture_height/2) with +0.05 m outward offset along hold_vector"
+      note: "Linecast target for D1 backstop reach verification (player-movement-hide #5 §D1, approved 2026-09-20). Outward offset prevents prop-mesh self-occlusion; enclosed props (lockers/wardrobes) provide ApertureVisionWindow for clear linecast."
+      source: design/gdd/player-movement-hide.md  # D1
+      owned_by: "Level / hide system (authored per spot)"
       consumed_by: [Guard AI FSM GDD, Level GDD, Hide System GDD]
 
 burst_throw:

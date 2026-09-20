@@ -41,14 +41,20 @@ GDDs scanned:
 5. **Diagnostic Mappings & Rejection Codes**:
    - Rejection codes `BURST_STAND_CLEARANCE_BLOCKED`, `THROW_WHILE_MOVING_REJECTED`, `INITIAL_OVERLAP_REJECTED`, and `INITIAL_OVERLAP_QUERY_INCOMPLETE` in `src/AI/Core/NoiseRejectionCodes.cs` are completely mapped in `design/registry/entities.yaml` `player_noise_diagnostics`.
 
+6. **Player Movement & Hide Post-Approval Synchronization (2026-09-20)**:
+   - Synchronized `guard-ai-fsm.md §C1.4` Backstop Linecast endpoint to `Physics.Linecast(guard_eye, aperture_portal_target)` per canonical `player-movement-hide.md §D1`.
+   - Added formulas D1 (`hidespot_catch_reach_resolvable`), D2 (`hidespot_vertical_offset_authoring_margin`), and D4 (`through_spot_escape_time_invariant`) to `design/registry/entities.yaml`.
+   - Registered tuning constants `standoff_margin` ($0.10\text{ m}$), `t_margin_react` ($0.3\text{ s}$), `t_spotfront_verify_through` ($2.5\text{ s}$) and vector `aperture_portal_target` to `design/registry/entities.yaml`.
+   - Updated `auth_margin` note with load-time joint constraint: $\text{delta\_y\_tolerance} - \text{auth\_margin} \ge 0.3\text{ m}$.
+
 ## Conflicts Found
 
-None. All cross-file formulas, constants, safe ranges, and rejection diagnostics are in 100% lock-step parity.
+- **Resolved**: `guard-ai-fsm.md §C1.4` line 161 Backstop Linecast endpoint updated from `proxy(interior_position)` to `aperture_portal_target`. Logged in `docs/consistency-failures.md`.
 
 ## Stale Registry Entries
 
-None confirmed.
+- **Resolved**: Added missing HideSpot constants (`standoff_margin`, `t_margin_react`, `t_spotfront_verify_through`), authored vector `aperture_portal_target`, and formulas D1/D2/D4 to `design/registry/entities.yaml`.
 
 ## Verdict
 
-**PASS** — All canonical GDDs, fixture specifications, and registry entries are mutually consistent with zero detected conflicts.
+**PASS** — All canonical GDDs, fixture specifications, and registry entries are mutually consistent with zero remaining conflicts. All detected sync items resolved.

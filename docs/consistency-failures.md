@@ -7,6 +7,10 @@
 |------|-------|-------|---------------|--------|
 | 2026-08-26 | entities.yaml (perception F11 / guard-ai-fsm D4) | player-third-person-controller.md | Model-semantics (V_chase auto-scale vs pinned-absolute) | Resolved |
 | 2026-08-26 | player-movement-hide.md §Core Rule 5 | player-movement-hide.md §D1 (same doc) | Internal consistency — stale Euclidean-depth pin vs retired D1 OR-invariant | Resolved |
+| 2026-09-02 | guard-ai-fsm.md C1.4 | player-movement-hide.md D1 | HideSpot catch-gate datum (raw spot_position vs proxy(interior_position)) | Resolved |
+| 2026-09-02 | entities.yaml | perception.md F5 | Perception threshold tuning domain | Resolved |
+| 2026-09-02 | entities.yaml / player-movement-hide.md | sound_performance_audit.md | Deduplication identity completeness | Resolved |
+| 2026-09-20 | guard-ai-fsm.md §C1.4 | player-movement-hide.md §D1 | Linecast endpoint datum (proxy(interior_position) vs aperture_portal_target) | Resolved |
 
 ### [2026-08-26] — /consistency-check — 🔴 CONFLICT
 **Domain**: Cross-system chase/movement constants (Guard AI FSM D4 · Perception F11 · Player Controller F2/G3)
@@ -49,3 +53,10 @@
 **What happened**: The audit's occupancy deduplication row omits the canonical immutable `transition_id` from `(session_id, attempt_epoch, hide_spot_id, transition_id)`.
 **Resolution**: Resolved same session — the audit row now states the complete immutable occupancy identity `(session_id, attempt_epoch, hide_spot_id, transition_id)`.
 **Pattern**: Exactly-once event audit rows must reproduce the full canonical identity tuple rather than rely on vague transport/source wording.
+
+### [2026-09-20] — /consistency-check — 🔴 CONFLICT
+**Domain**: HideSpot backstop reachability & occlusion Linecast (Guard AI FSM C1.4 · Player Movement & Hide D1)
+**Documents involved**: `design/gdd/guard-ai-fsm.md` §C1.4 :161 vs `design/gdd/player-movement-hide.md` §D1
+**What happened**: The FSM C1.4 Backstop Linecast specified targeting `proxy(interior_position)` from `guard_hold`, which on enclosed hide spots (lockers/wardrobes with solid mesh shells) causes the Linecast to collide with prop geometry and falsely fail the backstop reach gate. Canonical GDD #5 §D1 (approved 2026-09-20) specifies targeting `aperture_portal_target` at the entrance portal from `guard_eye`, with `ApertureVisionWindow` providing clear vision for enclosed props.
+**Resolution**: Resolved same session — synchronized `guard-ai-fsm.md §C1.4` to target `aperture_portal_target` from `guard_eye`, matching canonical GDD #5 D1.
+**Pattern**: Linecasts testing reachability or perception into enclosed interactive props must test against authored aperture targets (`aperture_portal_target`), not internal placement centroids whose rays are blocked by the prop's exterior collider/mesh.
