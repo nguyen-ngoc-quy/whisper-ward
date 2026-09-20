@@ -2,7 +2,7 @@
 
 > **Status**: Under Review (fresh decomposition, 2026-08-17)
 > **Created**: 2026-08-17
-> **Last Updated**: 2026-09-20
+> **Last Updated**: 2026-09-21
 > **Source Concept**: design/gdd/game-concept.md (APPROVED conditional — review #24, saturation)
 >
 > **Cross-document authority note (lifecycle / attempt_epoch).** The canonical
@@ -58,7 +58,7 @@ demo. See the concept's review history for the fully-pinned contract surface
 | 15 | Event / Messaging bus *(inferred)* | Core | MVP | Not Started | — | — |
 | 16 | Save / Session state *(inferred)* | Persistence | Target | Not Started | — | Grade, HUD |
 | 17 | Scene / Asset management *(inferred)* | Core | Vertical Slice | Not Started | — | Event bus |
-| 18 | Physics & collision config *(inferred)* | Core | MVP | Not Started | — | — |
+| 18 | Physics & collision config *(inferred)* | Core | MVP | **Approved** (2026-09-21 — lean review approved; 8/8 core sections + 16 ACs verified; D1–D6 formulas & constants registered in entities.yaml; zero cross-doc conflicts) | `design/gdd/physics-collision-config.md` | — |
 | 19 | Input system *(inferred)* | Core | MVP | Not Started | — | — |
 | 20 | Camera (Cinemachine rig) *(inferred)* | Core | MVP | Not Started | — | Player Controller, Input |
 | 21 | VFX / telegraph layer *(inferred)* | UI & Feedback | Target | Not Started | — | Guard AI, Perception, Event bus |

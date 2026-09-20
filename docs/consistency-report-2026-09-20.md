@@ -15,6 +15,8 @@ GDDs scanned:
 - `design/gdd/player-third-person-controller.md`
 - `design/gdd/sound_performance_audit.md`
 - `design/gdd/suspicion-meter-grade.md`
+- `design/gdd/navmesh-pathfinding.md`
+- `design/gdd/physics-collision-config.md`
 - `design/fixtures/noise-fixture-spec.md`
 - `design/levels/mvp-burst-route-fixture.md`
 
@@ -61,15 +63,24 @@ GDDs scanned:
    - Verified bidirectional contracts: Guard AI FSM `#1`, Perception `#2`, Player Movement & Hide `#5`, Suspicion Meter & Grade `#7`, Physics `#18` (ADR-0002).
    - Confirmed thin-wall linecast verification on `SamplePosition` eliminates wall-teleport snapping; confirmed `Arrived` strictly takes precedence over `PathEnd` in D3.
 
+9. **Physics & Collision Config Synchronization (2026-09-20)**:
+   - Verified that all Physics formulas (D1 `contact_surface_pushout`, D2 `kinematic_step_trajectory`, D3 `subtick_root_selection`, D4 `launch_initial_overlap_check`, D5 `collision_ambiguity_invariant`, D6 `min_wall_thickness_invariant`) are registered in `design/registry/entities.yaml`.
+   - Registered tuning constants (`min_wall_thickness = 0.10 m`, `sensing_sync_max_frequency = 5.0 Hz`) in `design/registry/entities.yaml`.
+   - Verified cross-system locks: `E20_layer_manifest` (`World` required; `Player`, `Guard`, `trigger` strictly forbidden), `HideSpotContainmentProfile` (`QueryTriggerInteraction.Collide` dedicated mask), `QueryTriggerInteraction.Ignore` universal for sensing/occlusion, `queriesHitBackfaces = false`, `autoSyncTransforms = false` global lifetime authority, `projectile_radius = 0.05 m`, `epsilon_contact = 0.001 m`, `contact_ambiguity_tolerance = 0.001 m`, `initial_overlap_result_capacity = 64`, `dt_max = 0.0083333333 s` ($120\text{ Hz}$), `epsilon_t = 0.0083333333 s`.
+   - Confirmed demand-driven batch transform sync contract (1 call per Burst flight batch, 1 call per AI sensing tick) resolves historical unity-specialist F2 advisory without global setting toggle churn.
+   - Zero conflicts detected across all 9 canonical GDDs and ADR-0002.
+
 ## Conflicts Found
 
 - **Resolved**: `guard-ai-fsm.md §C1.4` line 161 Backstop Linecast endpoint updated from `proxy(interior_position)` to `aperture_portal_target`. Logged in `docs/consistency-failures.md`.
 - Zero conflicts found in NavMesh / Pathfinding audit.
+- Zero conflicts found in Physics & Collision Config audit.
 
 ## Stale Registry Entries
 
 - **Resolved**: Added missing HideSpot constants (`standoff_margin`, `t_margin_react`, `t_spotfront_verify_through`), authored vector `aperture_portal_target`, and formulas D1/D2/D4 to `design/registry/entities.yaml`.
 - **Resolved**: Added NavMesh formulas D1–D6 and constants `t_repath_min`, `T_repath`, `Delta_p_trigger`, `omega_turn`, `a_max`, `v_size`, `margin_corridor`, `r_avoid` to `design/registry/entities.yaml`.
+- **Resolved**: Added Physics formulas D1–D6 and constants `min_wall_thickness`, `sensing_sync_max_frequency` to `design/registry/entities.yaml`.
 
 ## Verdict
 

@@ -159,7 +159,69 @@ formula_definitions:
     note: "Corridor Width Clearance Invariant (D6, rev 2026-09-20): Level certification constraint guaranteeing unjammed two-way passing and clean RVO avoidance (floor 1.20 m at r_guard 0.40 m, margin 0.40 m)."
     consumed_by: [NavMesh GDD, Level GDD]
 
+  - name: contact_surface_pushout
+    expression: "p_contact = p_hit + n_hit * (r_proj + eps_contact)"
+    source: design/gdd/physics-collision-config.md  # D1 (rev 2026-09-20)
+    output_range: "Vector3 (m)"
+    variables: [p_contact, p_hit, n_hit, r_proj, eps_contact]
+    note: "Contact Surface Push-Out Formula (D1, rev 2026-09-20): Offsets projectile center along contact surface normal by (r_proj + eps_contact) with eps_contact = 0.001 m to prevent collider geometry re-penetration on subsequent ticks."
+    consumed_by: [Physics GDD, Player Noise GDD, Level GDD]
+
+  - name: kinematic_step_trajectory
+    expression: "p(t + Delta_t) = p(t) + v(t) * Delta_t + 0.5 * g * Delta_t^2; v(t + Delta_t) = v(t) + g * Delta_t"
+    source: design/gdd/physics-collision-config.md  # D2 (rev 2026-09-20)
+    output_range: "p in Vector3 (m), v in Vector3 (m/s)"
+    variables: [p, v, g, Delta_t, t]
+    note: "Kinematic Trajectory Step Integration (D2, rev 2026-09-20): Deterministic 120 Hz fixed-step integration for Burst projectile flight with continuous swept SphereCast (Delta_t = 1/120 s)."
+    consumed_by: [Physics GDD, Player Noise GDD]
+
+  - name: subtick_root_selection
+    expression: "t_flight = min { t in t_roots | t > eps_t }"
+    source: design/gdd/physics-collision-config.md  # D3 (rev 2026-09-20)
+    output_range: "[eps_t, +infinity) s"
+    variables: [t_flight, t_roots, eps_t]
+    note: "Sub-Tick Analytical Root Selection (D3, rev 2026-09-20): Selects the smallest real positive ballistic root strictly exceeding eps_t = 1/120 s to eliminate float rounding zero-time detonations on flat ground."
+    consumed_by: [Physics GDD, Player Noise GDD, Level GDD]
+
+  - name: launch_initial_overlap_check
+    expression: "Admission = ADMITTED if N_hits == 0 else (REJECTED_OVERLAP if (1 <= N_hits < 64) else FAIL_CLOSED_SATURATED)"
+    source: design/gdd/physics-collision-config.md  # D4 (rev 2026-09-20)
+    output_range: "Enum in {ADMITTED, REJECTED_OVERLAP, FAIL_CLOSED_SATURATED}"
+    variables: [N_hits, Admission]
+    note: "Launch Initial Overlap Pre-Spend Check (D4, rev 2026-09-20): OverlapSphere preflight check using static 64-element buffer. Rejects embedded launch without spend; fails closed on saturation."
+    consumed_by: [Physics GDD, Player Noise GDD, LevelFixture]
+
+  - name: collision_ambiguity_invariant
+    expression: "TieStatus = AMBIGUOUS_COLLISION if |d2 - d1| < delta_ambiguity else DETERMINISTIC"
+    source: design/gdd/physics-collision-config.md  # D5 (rev 2026-09-20)
+    output_range: "Enum in {AMBIGUOUS_COLLISION, DETERMINISTIC}"
+    variables: [d1, d2, delta_ambiguity, TieStatus]
+    note: "Collision Ambiguity Invariant (D5, rev 2026-09-20): Level certification constraint rejecting tie hits within delta_ambiguity = 0.001 m to preserve deterministic preview/runtime parity."
+    consumed_by: [Physics GDD, Player Noise GDD, Level GDD]
+
+  - name: min_wall_thickness_invariant
+    expression: "T_wall >= delta_wall_min = 2 * r_proj = 0.10 m"
+    source: design/gdd/physics-collision-config.md  # D6 (rev 2026-09-20)
+    output_range: "Boolean in {PASS, FAIL}; T_wall >= 0.10 m"
+    variables: [T_wall, delta_wall_min, r_proj]
+    note: "Minimum Wall Thickness Invariant (D6, rev 2026-09-20): Level geometry certification constraint ensuring all solid E20 obstacles have thickness >= 0.10 m to prevent projectile tunneling and acoustic leakage."
+    consumed_by: [Physics GDD, Level GDD, Perception GDD]
+
 constants:
+  - name: min_wall_thickness
+    value: 0.10  # m — minimum solid wall thickness invariant (D6)
+    safe_range: "[0.08, 0.25] m"
+    note: "Minimum physical thickness for E20 obstacles to prevent projectile tunneling and raycast leakage."
+    source: design/gdd/physics-collision-config.md  # D6
+    consumed_by: [Physics GDD, Level GDD, Perception GDD]
+
+  - name: sensing_sync_max_frequency
+    value: 5.0  # Hz — maximum frequency for Physics.SyncTransforms before AI sensing ticks
+    safe_range: "[2.0, 10.0] Hz"
+    note: "Rate cap for explicit transform synchronization to protect 16.6 ms frame budget."
+    source: design/gdd/physics-collision-config.md  # Tuning Knobs
+    consumed_by: [Physics GDD, Perception GDD, Guard AI FSM GDD]
+
   - name: T_base
     value: 0.30
     safe_range: "[0.20, 0.40]"
