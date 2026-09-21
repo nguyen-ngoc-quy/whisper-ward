@@ -92,7 +92,7 @@ requirements:
     domain: Movement / Locomotion
     requirement: "Kinematic speed hierarchy: V_crouch = 1.80 m/s < V_walk = 3.60 m/s < V_run = 6.25 m/s."
     adr: ADR-0006
-    status: Planned
+    status: Accepted
 
   - id: TR-CORE-002
     gdd: player-third-person-controller.md
@@ -101,7 +101,7 @@ requirements:
     domain: Movement / Locomotion
     requirement: "Anti-kiting kinematic invariant: V_chase / V_run >= 1.20 (7.50 / 6.25 = 1.20)."
     adr: ADR-0006
-    status: Planned
+    status: Accepted
 
   - id: TR-CORE-003
     gdd: player-third-person-controller.md
@@ -110,7 +110,7 @@ requirements:
     domain: Movement / Locomotion
     requirement: "Camera-relative planar motion basis transformation from Cinemachine forward vector."
     adr: ADR-0006
-    status: Planned
+    status: Accepted
 
   - id: TR-CORE-004
     gdd: player-third-person-controller.md
@@ -308,7 +308,7 @@ requirements:
     domain: Mechanics
     requirement: "HideSpot trigger volume state machine with full player visibility suppression mask."
     adr: ADR-0006
-    status: Planned
+    status: Accepted
 
   - id: TR-FEAT-016
     gdd: player-movement-hide.md
@@ -317,7 +317,7 @@ requirements:
     domain: Mechanics
     requirement: "Pure-pivot translational lock (Delta p = 0) during spot dwell; yaw rotation allowed within clamp."
     adr: ADR-0006
-    status: Planned
+    status: Accepted
 
   - id: TR-FEAT-017
     gdd: player-movement-hide.md
@@ -326,7 +326,7 @@ requirements:
     domain: Mechanics
     requirement: "Standoff positioning contract: standoff_distance = 1.20 m from spot entry node."
     adr: ADR-0006
-    status: Planned
+    status: Accepted
 
   - id: TR-FEAT-018
     gdd: suspicion-meter-grade.md

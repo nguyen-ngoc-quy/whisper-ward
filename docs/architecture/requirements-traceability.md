@@ -12,10 +12,10 @@
 | Metric | Count | Percentage |
 | :--- | :--- | :--- |
 | **Total Technical Requirements** | **46** | **100.0%** |
-| **Covered by Accepted ADRs** | **16** | **34.8%** |
+| **Covered by Accepted ADRs** | **22** | **47.8%** |
 | **Foundation Layer Requirements** | **9 / 9** | **100.0% (Zero Foundation Gaps)** |
-| **Core Layer Requirements** | **1 / 10** | **10.0%** (9 planned in ADR-0006..008) |
-| **Feature Layer Requirements** | **4 / 19** | **21.1%** (15 planned in ADR-0009..011) |
+| **Core Layer Requirements** | **4 / 10** | **40.0%** (6 planned in ADR-0007..008) |
+| **Feature Layer Requirements** | **7 / 19** | **36.8%** (12 planned in ADR-0009..011) |
 | **Presentation Layer Requirements**| **5 / 8** | **62.5%** (3 planned in ADR-0012) |
 | **Unplanned Coverage Gaps** | **0** | **0.0%** |
 
@@ -41,9 +41,9 @@
 
 | Requirement ID | GDD Source | System | Technical Requirement Specification | ADR Coverage | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TR-CORE-001** | `player-third-person-controller.md` | #11 Controller | Kinematic speed hierarchy: $V_{\text{crouch}}=1.80 < V_{\text{walk}}=3.60 < V_{\text{run}}=6.25\text{ m/s}$. | `ADR-0006` | ⚠️ Planned (Pre-Prod) |
-| **TR-CORE-002** | `player-third-person-controller.md` | #11 Controller | Anti-kiting kinematic invariant: $V_{\text{chase}} / V_{\text{run}} \ge 1.20$. | `ADR-0006` | ⚠️ Planned (Pre-Prod) |
-| **TR-CORE-003** | `player-third-person-controller.md` | #11 Controller | Camera-relative planar motion basis transformation. | `ADR-0006` | ⚠️ Planned (Pre-Prod) |
+| **TR-CORE-001** | `player-third-person-controller.md` | #11 Controller | Kinematic speed hierarchy: $V_{\text{crouch}}=1.80 < V_{\text{walk}}=3.60 < V_{\text{run}}=6.25\text{ m/s}$. | `ADR-0006` | ✅ **Covered (Accepted)** |
+| **TR-CORE-002** | `player-third-person-controller.md` | #11 Controller | Anti-kiting kinematic invariant: $V_{\text{chase}} / V_{\text{run}} \ge 1.20$. | `ADR-0006` | ✅ **Covered (Accepted)** |
+| **TR-CORE-003** | `player-third-person-controller.md` | #11 Controller | Camera-relative planar motion basis transformation. | `ADR-0006` | ✅ **Covered (Accepted)** |
 | **TR-CORE-004** | `player-third-person-controller.md` | #11 Controller | Stance transition headroom clearance SphereCast ($R=0.25\text{ m}, H=1.80\text{ m}$). | `ADR-0005` | ✅ **Covered (Accepted)** |
 | **TR-CORE-005** | `navmesh-pathfinding.md` | #12 NavMesh | `NavMesh.CalculatePath` non-alloc buffer queries. | `ADR-0007` | ⚠️ Planned (Pre-Prod) |
 | **TR-CORE-006** | `navmesh-pathfinding.md` | #12 NavMesh | Spatial corridor clearance enforcement ($\ge 1.50\text{ m}$) for patrol paths. | `ADR-0007` | ⚠️ Planned (Pre-Prod) |
@@ -70,9 +70,9 @@
 | **TR-FEAT-012** | `player-noise.md` | #3 Noise | Acoustic hearing emission radii: Walk ($4.0\text{ m}$), Run ($6.0\text{ m}$), Burst ($10.5\text{ m}$). | `ADR-0011` | ⚠️ Planned (Pre-Prod) |
 | **TR-FEAT-013** | `player-noise.md` | #3 Noise | Audible stride ledger with fresh-session commit window ($0.55\text{ s}$). | `ADR-0011` | ⚠️ Planned (Pre-Prod) |
 | **TR-FEAT-014** | `player-noise.md` | #3 Noise | Clean distraction scorecard exemption ($0.0\text{ pts}$ direct penalty). | `ADR-0004` | ✅ **Covered (Accepted)** |
-| **TR-FEAT-015** | `player-movement-hide.md` | #5 Movement | HideSpot trigger volume state machine with visibility suppression mask. | `ADR-0006` / `ADR-0010` | ⚠️ Planned (Pre-Prod) |
-| **TR-FEAT-016** | `player-movement-hide.md` | #5 Movement | Pure-pivot translational lock ($\Delta \vec{p} = \vec{0}$) during spot dwell. | `ADR-0006` | ⚠️ Planned (Pre-Prod) |
-| **TR-FEAT-017** | `player-movement-hide.md` | #5 Movement | Standoff positioning contract: `standoff_distance = 1.20 m` from entry node. | `ADR-0006` / `ADR-0010` | ⚠️ Planned (Pre-Prod) |
+| **TR-FEAT-015** | `player-movement-hide.md` | #5 Movement | HideSpot trigger volume state machine with visibility suppression mask. | `ADR-0006` / `ADR-0010` | ✅ **Covered (Accepted)** |
+| **TR-FEAT-016** | `player-movement-hide.md` | #5 Movement | Pure-pivot translational lock ($\Delta \vec{p} = \vec{0}$) during spot dwell. | `ADR-0006` | ✅ **Covered (Accepted)** |
+| **TR-FEAT-017** | `player-movement-hide.md` | #5 Movement | Standoff positioning contract: `standoff_distance = 1.20 m` from entry node. | `ADR-0006` / `ADR-0010` | ✅ **Covered (Accepted)** |
 | **TR-FEAT-018** | `suspicion-meter-grade.md` | #7 Grade | Deterministic score integral: $S = 100 - \sum \text{Penalties} - \int \text{Exposure}$. | `ADR-0004` | ✅ **Covered (Accepted)** |
 | **TR-FEAT-019** | `suspicion-meter-grade.md` | #7 Grade | Immutable incident ledger recording detection events, escalations, retries. | `ADR-0004` | ✅ **Covered (Accepted)** |
 
@@ -93,7 +93,7 @@
 
 ## 3. Scheduled Pre-Production ADR Roadmap
 
-1. **`ADR-0006`**: *Kinematic Player Controller, Stance FSM & Headroom SphereCast* (Covers `TR-CORE-001..003`, `TR-FEAT-015..017`)
+1. **`ADR-0006`**: *Kinematic Player Controller, Stance FSM & Headroom SphereCast* (Covers `TR-CORE-001..003`, `TR-FEAT-015..017`) — ✅ **Accepted**
 2. **`ADR-0007`**: *NavMesh NonAlloc Query Service & 2.5D Catch Gate Verification* (Covers `TR-CORE-005..007`)
 3. **`ADR-0008`**: *Cinemachine 3rd-Person Camera Rig & Occlusion SphereCast Damping* (Covers `TR-CORE-008..010`)
 4. **`ADR-0009`**: *Perception Dual-Threat Pipeline, Raycast Budget & Dynamic Thresholds* (Covers `TR-FEAT-006..008`)
