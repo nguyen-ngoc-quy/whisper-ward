@@ -4,7 +4,14 @@
 > **GDD**: `design/gdd/input-system.md`  
 > **Architecture Module**: `InputSystemService` (`WhisperWard.Foundation.Input`)  
 > **Status**: Ready  
-> **Stories**: Not yet created — run `/create-stories input-system`  
+> **Stories**: 2 stories created — see table below  
+
+## Stories
+
+| # | Story | Type | Status | ADR | File |
+|---|-------|------|--------|-----|------|
+| 001 | Unified C# Input Actions Wrapper & Action Map Switching | Logic | Ready | ADR-0005 | `story-001-input-actions-wrapper-map-switching.md` |
+| 002 | Radial Deadzones & Stance/Throw Input Buffering Service | Logic | Ready | ADR-0005 | `story-002-radial-deadzones-buffering-service.md` |  
 
 ## Overview
 

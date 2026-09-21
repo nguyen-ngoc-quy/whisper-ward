@@ -4,7 +4,16 @@
 > **GDD**: `design/gdd/event-messaging-bus.md`  
 > **Architecture Module**: `EventMessagingBus` (`WhisperWard.Foundation.EventBus`)  
 > **Status**: Ready  
-> **Stories**: Not yet created — run `/create-stories event-messaging-bus`  
+> **Stories**: 4 stories created — see table below  
+
+## Stories
+
+| # | Story | Type | Status | ADR | File |
+|---|-------|------|--------|-----|------|
+| 001 | Immutable Event Envelope & Type-Safe Subscription Lifecycle | Logic | Ready | ADR-0001 | `story-001-immutable-event-envelope-subscription.md` |
+| 002 | Ingress Deduplication & Bounded Queue Backpressure | Logic | Ready | ADR-0001 | `story-002-ingress-deduplication-backpressure.md` |
+| 003 | 5-Phase Virtual-Clock Pipeline & Deterministic Ordering | Logic | Ready | ADR-0001 | `story-003-virtual-clock-pipeline-deterministic-ordering.md` |
+| 004 | Atomic Epoch Barriers & Transactional Perception Handoff | Integration | Ready | ADR-0001 | `story-004-atomic-epoch-barriers-transactional-handoff.md` |  
 
 ## Overview
 

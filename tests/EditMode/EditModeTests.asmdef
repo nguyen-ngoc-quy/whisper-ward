@@ -3,7 +3,9 @@
     "rootNamespace": "WhisperWard.Tests.EditMode",
     "references": [
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "WhisperWard.Foundation",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"
