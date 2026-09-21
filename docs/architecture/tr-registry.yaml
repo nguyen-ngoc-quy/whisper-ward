@@ -1,0 +1,419 @@
+version: 1.0.0
+last_updated: "2026-09-21"
+project: "Whisper Ward"
+target_engine: "Unity 6 LTS (6000.3.17f1)"
+
+requirements:
+  - id: TR-FOUND-001
+    gdd: event-messaging-bus.md
+    system: "#15 Event Bus"
+    layer: Foundation
+    domain: Core / Scripting
+    requirement: "Struct-based zero-allocation event dispatch with type-safe subscription keys and snapshot lifecycle."
+    adr: ADR-0001
+    status: Accepted
+
+  - id: TR-FOUND-002
+    gdd: event-messaging-bus.md
+    system: "#15 Event Bus"
+    layer: Foundation
+    domain: Core / Scripting
+    requirement: "Deterministic ordering tuple: (virtual_time, priority, sequence_id)."
+    adr: ADR-0001
+    status: Accepted
+
+  - id: TR-FOUND-003
+    gdd: event-messaging-bus.md
+    system: "#15 Event Bus"
+    layer: Foundation
+    domain: Core / Scripting
+    requirement: "Ingress deduplication ring buffer (capacity 4096) with fact_id tracking."
+    adr: ADR-0001
+    status: Accepted
+
+  - id: TR-FOUND-004
+    gdd: event-messaging-bus.md
+    system: "#15 Event Bus"
+    layer: Foundation
+    domain: Core / Scripting
+    requirement: "Atomic attempt_epoch invalidation: purge all queued/inflight events upon checkpoint reload or player respawn."
+    adr: ADR-0001
+    status: Accepted
+
+  - id: TR-FOUND-005
+    gdd: physics-collision-config.md
+    system: "#18 Physics"
+    layer: Foundation
+    domain: Physics
+    requirement: "Strict 7-layer physics matrix: Player, Guard, World, VisionOccluder, SoundOccluder, HideSpotTrigger, PickupTrigger."
+    adr: ADR-0002
+    status: Accepted
+
+  - id: TR-FOUND-006
+    gdd: physics-collision-config.md
+    system: "#18 Physics"
+    layer: Foundation
+    domain: Physics
+    requirement: "Global queriesHitTriggers = false for perception raycasts to prevent trigger volume occlusion anomalies."
+    adr: ADR-0002
+    status: Accepted
+
+  - id: TR-FOUND-007
+    gdd: physics-collision-config.md
+    system: "#18 Physics"
+    layer: Foundation
+    domain: Physics
+    requirement: "Geometric minimum wall thickness invariant of 0.10m across all collision geometry."
+    adr: ADR-0002
+    status: Accepted
+
+  - id: TR-FOUND-008
+    gdd: input-system.md
+    system: "#19 Input"
+    layer: Foundation
+    domain: Input
+    requirement: "Unified C# Action Asset: WASD locomotion, Crouch toggle/hold, Run hold, Burst throw charge/release."
+    adr: ADR-0005
+    status: Accepted
+
+  - id: TR-FOUND-009
+    gdd: input-system.md
+    system: "#19 Input"
+    layer: Foundation
+    domain: Input
+    requirement: "Analog stick response curve with inner deadzone 0.10 and outer deadzone 0.95."
+    adr: ADR-0005
+    status: Accepted
+
+  - id: TR-CORE-001
+    gdd: player-third-person-controller.md
+    system: "#11 Controller"
+    layer: Core
+    domain: Movement / Locomotion
+    requirement: "Kinematic speed hierarchy: V_crouch = 1.80 m/s < V_walk = 3.60 m/s < V_run = 6.25 m/s."
+    adr: ADR-0006
+    status: Planned
+
+  - id: TR-CORE-002
+    gdd: player-third-person-controller.md
+    system: "#11 Controller"
+    layer: Core
+    domain: Movement / Locomotion
+    requirement: "Anti-kiting kinematic invariant: V_chase / V_run >= 1.20 (7.50 / 6.25 = 1.20)."
+    adr: ADR-0006
+    status: Planned
+
+  - id: TR-CORE-003
+    gdd: player-third-person-controller.md
+    system: "#11 Controller"
+    layer: Core
+    domain: Movement / Locomotion
+    requirement: "Camera-relative planar motion basis transformation from Cinemachine forward vector."
+    adr: ADR-0006
+    status: Planned
+
+  - id: TR-CORE-004
+    gdd: player-third-person-controller.md
+    system: "#11 Controller"
+    layer: Core
+    domain: Movement / Locomotion
+    requirement: "Stance transition headroom validation: Uncrouch clearance SphereCast (R=0.25m, H=1.80m)."
+    adr: ADR-0005
+    status: Accepted
+
+  - id: TR-CORE-005
+    gdd: navmesh-pathfinding.md
+    system: "#12 NavMesh"
+    layer: Core
+    domain: Navigation
+    requirement: "Agent-parameterized NavMesh.CalculatePath invocation using pre-allocated NavMeshPath buffers (0 GC)."
+    adr: ADR-0007
+    status: Planned
+
+  - id: TR-CORE-006
+    gdd: navmesh-pathfinding.md
+    system: "#12 NavMesh"
+    layer: Core
+    domain: Navigation
+    requirement: "Spatial corridor clearance enforcement: minimum navigable width >= 1.50m for all patrol paths."
+    adr: ADR-0007
+    status: Planned
+
+  - id: TR-CORE-007
+    gdd: navmesh-pathfinding.md
+    system: "#12 NavMesh"
+    layer: Core
+    domain: Navigation
+    requirement: "Off-mesh links strictly disabled (planar 2.5D surface navigation only)."
+    adr: ADR-0007
+    status: Planned
+
+  - id: TR-CORE-008
+    gdd: camera-cinemachine.md
+    system: "#20 Camera"
+    layer: Core
+    domain: Camera
+    requirement: "Cinemachine 3rd-person follow rig (X=0.45m, Y=1.65m, Z=-3.20m)."
+    adr: ADR-0008
+    status: Planned
+
+  - id: TR-CORE-009
+    gdd: camera-cinemachine.md
+    system: "#20 Camera"
+    layer: Core
+    domain: Camera
+    requirement: "Asymmetric occlusion recovery damping: fast push-in (tau_in=0.05s), smooth pull-out (tau_out=0.40s)."
+    adr: ADR-0008
+    status: Planned
+
+  - id: TR-CORE-010
+    gdd: camera-cinemachine.md
+    system: "#20 Camera"
+    layer: Core
+    domain: Camera
+    requirement: "Dynamic FOV expansion during active chase (60 deg to 68 deg, tau=0.20s)."
+    adr: ADR-0008
+    status: Planned
+
+  - id: TR-FEAT-001
+    gdd: guard-ai-fsm.md
+    system: "#1 Guard FSM"
+    layer: Feature
+    domain: AI
+    requirement: "Deterministic 3-state FSM: Patrol, Investigate, Chase. Zero intermediate hunting/alert states."
+    adr: ADR-0010
+    status: Planned
+
+  - id: TR-FEAT-002
+    gdd: guard-ai-fsm.md
+    system: "#1 Guard FSM"
+    layer: Feature
+    domain: AI
+    requirement: "Monotonic investigation re-anchor budget formula: t_reanchor = min(t_max, max(t_remaining, t_floor))."
+    adr: ADR-0010
+    status: Planned
+
+  - id: TR-FEAT-003
+    gdd: guard-ai-fsm.md
+    system: "#1 Guard FSM"
+    layer: Feature
+    domain: AI
+    requirement: "2.5D Catch Gate cylinder check: |Delta Y| <= 1.0m, distance <= 5.50m, clear Linecast at path arrival."
+    adr: ADR-0010
+    status: Planned
+
+  - id: TR-FEAT-004
+    gdd: guard-ai-fsm.md
+    system: "#1 Guard FSM"
+    layer: Feature
+    domain: AI
+    requirement: "Witnessed HideSpot entry authority: suspends chase give-up timer, switches goal mode to HideSpotFront."
+    adr: ADR-0010
+    status: Planned
+
+  - id: TR-FEAT-005
+    gdd: guard-ai-fsm.md
+    system: "#1 Guard FSM"
+    layer: Feature
+    domain: AI
+    requirement: "Multi-guard chase duration pooling and sequential give-up timers (Target tier)."
+    adr: ADR-0010
+    status: Planned
+
+  - id: TR-FEAT-006
+    gdd: perception.md
+    system: "#2 Perception"
+    layer: Feature
+    domain: Perception
+    requirement: "Two-component threat tracking per guard: sustained-LOS accumulator (A_i) and residual wariness (R_i)."
+    adr: ADR-0009
+    status: Planned
+
+  - id: TR-FEAT-007
+    gdd: perception.md
+    system: "#2 Perception"
+    layer: Feature
+    domain: Perception
+    requirement: "Distance-scaled accumulator charge rate: dA/dt = r_charge_base * max(0, 1 - d/R_vision)^p."
+    adr: ADR-0009
+    status: Planned
+
+  - id: TR-FEAT-008
+    gdd: perception.md
+    system: "#2 Perception"
+    layer: Feature
+    domain: Perception
+    requirement: "Dynamic entry threshold marker: T_entry(R_i) = max(T_floor, T_base - kappa * R_i)."
+    adr: ADR-0009
+    status: Planned
+
+  - id: TR-FEAT-009
+    gdd: perception.md
+    system: "#2 Perception"
+    layer: Feature
+    domain: Perception
+    requirement: "Hearing Linecast occlusion check using SoundOccluder layer mask."
+    adr: ADR-0002
+    status: Accepted
+
+  - id: TR-FEAT-010
+    gdd: perception.md
+    system: "#2 Perception"
+    layer: Feature
+    domain: Perception
+    requirement: "Fixed virtual-time tick evaluation independent of render frame fluctuations."
+    adr: ADR-0001
+    status: Accepted
+
+  - id: TR-FEAT-011
+    gdd: player-noise.md
+    system: "#3 Noise"
+    layer: Feature
+    domain: Audio / Mechanics
+    requirement: "Ballistic projectile simulation (v0=10.0 m/s @ 30 deg) with SphereCast ground snap."
+    adr: ADR-0011
+    status: Planned
+
+  - id: TR-FEAT-012
+    gdd: player-noise.md
+    system: "#3 Noise"
+    layer: Feature
+    domain: Audio / Mechanics
+    requirement: "Acoustic hearing emission radii: Walk (4.0m), Run (6.0m), Burst (10.5m)."
+    adr: ADR-0011
+    status: Planned
+
+  - id: TR-FEAT-013
+    gdd: player-noise.md
+    system: "#3 Noise"
+    layer: Feature
+    domain: Audio / Mechanics
+    requirement: "Audible stride ledger with fresh-session commit window (0.55s) to debounce stutter steps."
+    adr: ADR-0011
+    status: Planned
+
+  - id: TR-FEAT-014
+    gdd: player-noise.md
+    system: "#3 Noise"
+    layer: Feature
+    domain: Audio / Mechanics
+    requirement: "Clean distraction scorecard exemption: 0.0 pts direct penalty for un-witnessed Burst throws."
+    adr: ADR-0004
+    status: Accepted
+
+  - id: TR-FEAT-015
+    gdd: player-movement-hide.md
+    system: "#5 Movement"
+    layer: Feature
+    domain: Mechanics
+    requirement: "HideSpot trigger volume state machine with full player visibility suppression mask."
+    adr: ADR-0006
+    status: Planned
+
+  - id: TR-FEAT-016
+    gdd: player-movement-hide.md
+    system: "#5 Movement"
+    layer: Feature
+    domain: Mechanics
+    requirement: "Pure-pivot translational lock (Delta p = 0) during spot dwell; yaw rotation allowed within clamp."
+    adr: ADR-0006
+    status: Planned
+
+  - id: TR-FEAT-017
+    gdd: player-movement-hide.md
+    system: "#5 Movement"
+    layer: Feature
+    domain: Mechanics
+    requirement: "Standoff positioning contract: standoff_distance = 1.20 m from spot entry node."
+    adr: ADR-0006
+    status: Planned
+
+  - id: TR-FEAT-018
+    gdd: suspicion-meter-grade.md
+    system: "#7 Grade"
+    layer: Feature
+    domain: Grade / Scoring
+    requirement: "Deterministic score integral: S = 100 - sum(Penalties) - int(Exposure). Letter ranks S/A/B/C/F."
+    adr: ADR-0004
+    status: Accepted
+
+  - id: TR-FEAT-019
+    gdd: suspicion-meter-grade.md
+    system: "#7 Grade"
+    layer: Feature
+    domain: Grade / Scoring
+    requirement: "Immutable incident ledger recording detection events, chase escalations, and retry deductions."
+    adr: ADR-0004
+    status: Accepted
+
+  - id: TR-PRES-001
+    gdd: suspicion-meter-grade.md
+    system: "#7 Meter UI"
+    layer: Presentation
+    domain: UI
+    requirement: "Planar azimuth directional chevron projection (Rx=240, Ry=160) on screen HUD."
+    adr: ADR-0004
+    status: Accepted
+
+  - id: TR-PRES-002
+    gdd: suspicion-meter-grade.md
+    system: "#7 Meter UI"
+    layer: Presentation
+    domain: UI
+    requirement: "Dominant threat selection ratio: r_threat* = argmax_i (A_i / T_entry_i)."
+    adr: ADR-0004
+    status: Accepted
+
+  - id: TR-PRES-003
+    gdd: suspicion-attribution-telemetry.md
+    system: "#10 Telemetry"
+    layer: Presentation
+    domain: Telemetry
+    requirement: "Zero-GC struct ring buffer of capacity 2048 entries recording all FSM transitions and causality keys."
+    adr: ADR-0012
+    status: Planned
+
+  - id: TR-PRES-004
+    gdd: suspicion-attribution-telemetry.md
+    system: "#10 Telemetry"
+    layer: Presentation
+    domain: Telemetry
+    requirement: "Async JSON exporter and WebGL LocalStorage sync under key 'ww_fsm_trace_latest'."
+    adr: ADR-0012
+    status: Planned
+
+  - id: TR-PRES-005
+    gdd: suspicion-attribution-telemetry.md
+    system: "#10 Telemetry"
+    layer: Presentation
+    domain: Telemetry
+    requirement: "Forensic verification scores evaluating Claims 1, 2, and 3 during automated playtests."
+    adr: ADR-0012
+    status: Planned
+
+  - id: TR-PRES-006
+    gdd: audio-ui-feedback.md
+    system: "#13 Audio"
+    layer: Presentation
+    domain: Audio
+    requirement: "Dynamic DSP Low-Pass Filter: 800Hz interior HideSpot cutoff, 1200Hz occluded wall cutoff."
+    adr: ADR-0003
+    status: Accepted
+
+  - id: TR-PRES-007
+    gdd: audio-ui-feedback.md
+    system: "#13 Audio"
+    layer: Presentation
+    domain: Audio
+    requirement: "Dual-voice footstep audio pool (capacity 24 voices) with surface material acoustics."
+    adr: ADR-0003
+    status: Accepted
+
+  - id: TR-PRES-008
+    gdd: audio-ui-feedback.md
+    system: "#13 Audio"
+    layer: Presentation
+    domain: Audio
+    requirement: "Continuous threat drone with dynamic pitch and volume modulation tied to dominant threat ratio."
+    adr: ADR-0003
+    status: Accepted
