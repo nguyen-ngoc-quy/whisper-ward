@@ -1,7 +1,9 @@
 {
     "name": "WhisperWard.Core",
     "rootNamespace": "WhisperWard.Core",
-    "references": [],
+    "references": [
+        "WhisperWard.Foundation"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
