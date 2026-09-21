@@ -4,7 +4,15 @@
 > **GDD**: `design/gdd/physics-collision-config.md`  
 > **Architecture Module**: `PhysicsCollisionConfig` (`WhisperWard.Foundation.Physics`)  
 > **Status**: Ready  
-> **Stories**: Not yet created — run `/create-stories physics-collision-config`  
+> **Stories**: 3 stories created — see table below  
+
+## Stories
+
+| # | Story | Type | Status | ADR | File |
+|---|-------|------|--------|-----|------|
+| 001 | 7-Layer Physics Matrix & Fail-Closed E20 Mask Resolution | Logic | Ready | ADR-0002 | `story-001-physics-matrix-e20-resolution.md` |
+| 002 | Global Physics Queries & Trigger Immunity Contract | Logic | Ready | ADR-0002 | `story-002-global-queries-trigger-immunity.md` |
+| 003 | Geometric Wall Thickness Validator & NonAlloc Spatial Queries | Logic | Ready | ADR-0002 | `story-003-wall-thickness-validator-nonalloc.md` |  
 
 ## Overview
 
