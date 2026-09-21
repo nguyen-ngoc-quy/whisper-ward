@@ -271,6 +271,38 @@ formula_definitions:
     note: "Epoch Barrier Invalidation Predicate (D4): Filters and purges pending envelopes and dedup entries whose attempt_epoch is strictly less than Xi_new upon room reset or player death."
     consumed_by: [Event Bus GDD, Guard AI FSM GDD, Perception GDD, Save/Session State GDD]
 
+  - name: dual_voice_footstep_gain
+    expression: "v_bar = clamp((v - V_crouch) / (V_run - V_crouch), 0.0, 1.0); G_body = G_body_min + v_bar * (G_body_max - G_body_min); G_accent = K_surface * (G_accent_min + v_bar^2 * (G_accent_max - G_accent_min)); Gain_norm = 1.0 / max(1.0, G_body + G_accent)"
+    source: design/gdd/audio-ui-feedback.md  # D1 (rev 2026-09-21)
+    output_range: "G_body in [0.20, 0.85], G_accent in [0.05, 1.125], Gain_master <= 1.0"
+    variables: [v, V_crouch, V_run, v_bar, G_body_min, G_body_max, G_accent_min, G_accent_max, K_surface, Gain_norm]
+    note: "Dual-Voice Footstep Gain & Velocity Crossfade (D1): Computes independent body (linear) and accent (quadratic x surface factor) footstep gains normalized to prevent 0 dBFS clipping."
+    consumed_by: [Audio & UI GDD, Player Movement & Hide GDD, Physics GDD]
+
+  - name: dsp_onset_verification_predicate
+    expression: "virtual_dsp_onset = (dsp_start_sample / sample_rate) + epoch_offset; OnsetOutcome = CONFIRMED if |virtual_dsp_onset - virtual_cue_request| <= tau_onset_tol else REJECTED_JITTER"
+    source: design/gdd/audio-ui-feedback.md  # D2 (rev 2026-09-21)
+    output_range: "Enum in {CONFIRMED, REJECTED_JITTER, UNSUPPORTED}"
+    variables: [dsp_start_sample, sample_rate, epoch_offset, virtual_cue_request, tau_onset_tol]
+    note: "Virtual Timestamp Boundary & DSP Onset Verification (D2): ADR-0003 contract certifying audio hardware onset timing against virtual gameplay dispatch deadline within 22 ms tolerance."
+    consumed_by: [Audio & UI GDD, Player Noise GDD, Event Bus GDD]
+
+  - name: spatial_acoustics_occlusion_attenuation
+    expression: "A_final(d) = A_distance(d) * M_occlusion * M_enclosed; A_distance(d) = d_min / max(d_min, d); M_occlusion = 10^(-4/20) if ray_blocked else 1.0; M_enclosed = 10^(-8/20) if enclosed else 1.0"
+    source: design/gdd/audio-ui-feedback.md  # D3 (rev 2026-09-21)
+    output_range: "A_final in [0.0, 1.0]"
+    variables: [d, d_min, d_max, M_occlusion, M_enclosed]
+    note: "Spatial Acoustics & Physical Occlusion Attenuation (D3): Attenuates 3D in-world audio through geometric distance, solid wall obstacle occlusion (-4 dB), and hide spot enclosure (-8 dB)."
+    consumed_by: [Audio & UI GDD, Guard AI FSM GDD, Player Movement & Hide GDD]
+
+  - name: suspicion_drone_pitch_volume_modulation
+    expression: "f_pitch(A_bar) = f_base * 2^(A_bar * Delta_octave); V_drone(A_bar) = A_bar * V_max; A_bar = clamp(max_i(A_i*) / T_chase, 0.0, 1.0)"
+    source: design/gdd/audio-ui-feedback.md  # D4 (rev 2026-09-21)
+    output_range: "f_pitch in [60.0, 120.0] Hz, V_drone in [0.0, 0.75]"
+    variables: [A_star, T_chase, f_base, Delta_octave, V_max, A_bar]
+    note: "Suspicion Drone Modulation (D4): Modulates non-diegetic psychological drone pitch exponentially (+1 octave) and volume linearly across the dominant threat level."
+    consumed_by: [Audio & UI GDD, Suspicion/Grade GDD, Guard AI FSM GDD]
+
 constants:
   - name: min_wall_thickness
     value: 0.10  # m — minimum solid wall thickness invariant (D6)
@@ -1267,6 +1299,47 @@ event_messaging_bus:
     note: "Diagnostic threshold warning when event processing within a single virtual clock phase exceeds budget."
     source: design/gdd/event-messaging-bus.md  # Tuning Knobs / G
     consumed_by: [Event Bus GDD]
+
+audio_ui_feedback:
+  - name: voice_pool_max_capacity
+    value: 24  # voices
+    safe_range: "[16, 32]"
+    note: "Maximum concurrent active AudioSources in WebGL-optimized 3-tier voice pool."
+    source: design/gdd/audio-ui-feedback.md  # Tuning Knobs / CR5
+    owned_by: "Audio & UI GDD"
+    consumed_by: [Audio & UI GDD, sound_performance_audit.md]
+
+  - name: rustle_stride_threshold
+    value: 0.70  # fraction of stride
+    safe_range: "[0.60, 0.80]"
+    note: "Stride progress fraction triggering audio-only pre-commit rustle tell."
+    source: design/gdd/audio-ui-feedback.md  # Tuning Knobs / CR3
+    owned_by: "Audio & UI GDD"
+    consumed_by: [Audio & UI GDD, Player Movement & Hide GDD]
+
+  - name: hidespot_lpf_cutoff_hz
+    value: 800.0  # Hz
+    safe_range: "[400.0, 1500.0] Hz"
+    note: "Low-Pass Filter cutoff frequency applied to SFX bus when player is enclosed in a hide spot."
+    source: design/gdd/audio-ui-feedback.md  # Tuning Knobs / CR6
+    owned_by: "Audio & UI GDD"
+    consumed_by: [Audio & UI GDD, Player Movement & Hide GDD]
+
+  - name: occlusion_lpf_cutoff_hz
+    value: 1200.0  # Hz
+    safe_range: "[800.0, 2500.0] Hz"
+    note: "Low-Pass Filter cutoff frequency applied to 3D SFX when occluded by E20 solid wall."
+    source: design/gdd/audio-ui-feedback.md  # Tuning Knobs / CR7
+    owned_by: "Audio & UI GDD"
+    consumed_by: [Audio & UI GDD, Physics GDD]
+
+  - name: lpf_cutoff_smoothing_tau_s
+    value: 0.15  # s
+    safe_range: "[0.05, 0.30] s"
+    note: "Exponential smoothing time constant for LPF cutoff frequency transitions."
+    source: design/gdd/audio-ui-feedback.md  # Tuning Knobs / EC5
+    owned_by: "Audio & UI GDD"
+    consumed_by: [Audio & UI GDD]
 
 guard_noise_response:
   - name: noise_response_profile
