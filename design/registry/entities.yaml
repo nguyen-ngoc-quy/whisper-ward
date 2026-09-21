@@ -1545,13 +1545,13 @@ camera_cinemachine:
 suspicion_attribution_telemetry:
   - name: telemetry_ring_buffer_capacity
     value: 2048  # entries — fixed power-of-two capacity for blittable FsmTraceRecord ring buffer
-    safe_range: "[1024, 4096] entries"
+    safe_range: "[1024, 8192] entries"
     note: "Static capacity of in-memory telemetry ring buffer enabling zero-GC bitwise indexing (S_global & 2047)."
     source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / CR1, D1
     owned_by: "Suspicion Attribution Telemetry GDD"
     consumed_by: [Suspicion Attribution Telemetry GDD]
 
-  - name: telemetry_record_max_bytes
+  - name: telemetry_record_byte_size_max
     value: 128  # bytes — maximum size of blittable FsmTraceRecord struct
     safe_range: "[64, 256] bytes"
     note: "Memory budget per trace record to ensure deterministic cache line fit and zero heap allocation."
@@ -1559,55 +1559,23 @@ suspicion_attribution_telemetry:
     owned_by: "Suspicion Attribution Telemetry GDD"
     consumed_by: [Suspicion Attribution Telemetry GDD]
 
-  - name: telemetry_total_memory_budget_bytes
-    value: 262144  # bytes (256 KiB) — total in-memory ring buffer static footprint
-    safe_range: "[131072, 524288] bytes"
-    note: "Hard ceiling on total RAM consumed by telemetry ring buffer during gameplay."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / CR1
+  - name: telemetry_burst_reach_distance
+    value: 1.20  # m — maximum distance to Burst pickup to qualify as presented/reached
+    safe_range: "[0.80, 2.00] m"
+    note: "Radial proximity threshold to a Burst pickup triggering the pickup-reached telemetry event (Claim 3 denominator)."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / CR2, D4
     owned_by: "Suspicion Attribution Telemetry GDD"
-    consumed_by: [Suspicion Attribution Telemetry GDD]
+    consumed_by: [Suspicion Attribution Telemetry GDD, Level Burst Route GDD]
 
-  - name: telemetry_debug_overlay
-    value: false  # boolean — editor scene view / dev build gizmo visualization flag
-    safe_range: "boolean: false | true"
-    note: "Toggles on-screen debug gizmos and FSM trace HUD overlay in development builds."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / Section Visual/Audio
-    owned_by: "Suspicion Attribution Telemetry GDD"
-    consumed_by: [Suspicion Attribution Telemetry GDD]
-
-  - name: telemetry_max_recent_events_display
-    value: 20  # entries — maximum events shown in dev HUD
-    safe_range: "[10, 50] entries"
-    note: "Number of most recent events rendered on the dev overlay panel."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs
-    owned_by: "Suspicion Attribution Telemetry GDD"
-    consumed_by: [Suspicion Attribution Telemetry GDD]
-
-  - name: telemetry_webgl_toast_duration_seconds
-    value: 2.5  # s — duration of clipboard copy toast notification on WebGL
-    safe_range: "[1.0, 5.0] s"
-    note: "On-screen display duration for the WebGL clipboard copy notification."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / UI Requirements
-    owned_by: "Suspicion Attribution Telemetry GDD"
-    consumed_by: [Suspicion Attribution Telemetry GDD]
-
-  - name: telemetry_claim1_target_ratio
+  - name: telemetry_claim1_pass_threshold
     value: 0.80  # unitless — minimum passing fraction for Claim 1 (80%)
     safe_range: "[0.70, 0.90]"
-    note: "Target pass ratio for first-capture forensic legibility validation."
+    note: "Target pass ratio for first-capture forensic legibility validation (N_first_captures >= 5)."
     source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D2
     owned_by: "Suspicion Attribution Telemetry GDD"
     consumed_by: [Suspicion Attribution Telemetry GDD]
 
-  - name: telemetry_claim1_min_sample_size
-    value: 5  # testers — minimum sample size for Claim 1 evaluation
-    safe_range: "[3, 20] testers"
-    note: "Minimum count of unique first-capture playtest subjects required to evaluate Claim 1."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D2
-    owned_by: "Suspicion Attribution Telemetry GDD"
-    consumed_by: [Suspicion Attribution Telemetry GDD]
-
-  - name: telemetry_claim2_target_ratio
+  - name: telemetry_claim2_pass_threshold
     value: 0.60  # unitless — minimum passing fraction for Claim 2 (60%)
     safe_range: "[0.50, 0.80]"
     note: "Target pass ratio for dual sub-bar comprehension and execution."
@@ -1615,11 +1583,11 @@ suspicion_attribution_telemetry:
     owned_by: "Suspicion Attribution Telemetry GDD"
     consumed_by: [Suspicion Attribution Telemetry GDD]
 
-  - name: telemetry_claim2_min_sample_size
-    value: 5  # testers — minimum sample size for Claim 2 evaluation
-    safe_range: "[3, 20] testers"
-    note: "Minimum count of unique playtest subjects required to evaluate Claim 2."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D3
+  - name: telemetry_claim3_pass_threshold
+    value: 0.60  # unitless — minimum passing fraction for Claim 3 (60%)
+    safe_range: "[0.50, 0.80]"
+    note: "Target pass ratio for unprompted tool adoption (N_presented >= 5)."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D4
     owned_by: "Suspicion Attribution Telemetry GDD"
     consumed_by: [Suspicion Attribution Telemetry GDD]
 
@@ -1631,29 +1599,53 @@ suspicion_attribution_telemetry:
     owned_by: "Suspicion Attribution Telemetry GDD"
     consumed_by: [Suspicion Attribution Telemetry GDD]
 
-  - name: telemetry_claim3_target_ratio
-    value: 0.60  # unitless — minimum passing fraction for Claim 3 (60%)
-    safe_range: "[0.50, 0.80]"
-    note: "Target pass ratio for unprompted tool adoption."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D4
+  - name: telemetry_min_tester_sample_size
+    value: 5  # testers — minimum sample size for Claim statistical validity
+    safe_range: "[5, 20] testers"
+    note: "Minimum count of unique playtest subjects required for statistically valid claim evaluation."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D2, D3, D4
     owned_by: "Suspicion Attribution Telemetry GDD"
     consumed_by: [Suspicion Attribution Telemetry GDD]
 
-  - name: telemetry_claim3_min_sample_size
-    value: 5  # testers — minimum sample size for Claim 3 evaluation
-    safe_range: "[3, 20] testers"
-    note: "Minimum count of unique playtest subjects reaching pickup required to evaluate Claim 3."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D4
+  - name: telemetry_flush_async_timeout_ms
+    value: 500  # ms — maximum wait for asynchronous JSON file write on PC
+    safe_range: "[100, 2000] ms"
+    note: "Timeout threshold for background file flush before warning."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / CR4
     owned_by: "Suspicion Attribution Telemetry GDD"
     consumed_by: [Suspicion Attribution Telemetry GDD]
 
-  - name: telemetry_claim3_pickup_reach_radius
-    value: 1.20  # m — maximum distance to pickup to qualify as presented/reached
-    safe_range: "[0.80, 2.00] m"
-    note: "Radial proximity threshold to a Burst pickup triggering the pickup-reached telemetry event."
-    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D4
+  - name: telemetry_trivial_duration_threshold_s
+    value: 1.00  # s — minimum attempt duration threshold
+    safe_range: "[0.50, 2.00] s"
+    note: "Threshold below which an attempt is marked trivial and excluded from playtest sample."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / EC3
     owned_by: "Suspicion Attribution Telemetry GDD"
-    consumed_by: [Suspicion Attribution Telemetry GDD, Level Burst Route GDD]
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_webgl_storage_key
+    value: "ww_fsm_trace_latest"  # string — localStorage key for WebGL trace fallback
+    safe_range: "unique key string"
+    note: "Key for persisting FSM trace JSON string in browser window.localStorage."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / EC2
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_debug_overlay
+    value: false  # boolean — editor scene view / dev build gizmo visualization flag
+    safe_range: "boolean: false | true"
+    note: "Toggles on-screen debug gizmos and FSM trace HUD overlay in development builds."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / Section Visual/Audio
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_flush_hotkey
+    value: "F12"  # string — debug hotkey to trigger manual trace flush
+    safe_range: "string: valid KeyCode"
+    note: "Keyboard key to force-flush current attempt trace to storage."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / Section Visual/Audio
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
 
 guard_noise_response:
   - name: noise_response_profile

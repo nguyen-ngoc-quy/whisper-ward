@@ -322,6 +322,7 @@ Tất cả các tham số vận hành của hệ thống Telemetry được qu�
 | `telemetry_flush_async_timeout_ms` | `500` | mili-giây (ms) | `[100, 2000]` | Thời gian chờ tối đa cho tác vụ ghi tệp JSON bất đồng bộ xuống ổ đĩa PC trước khi cảnh báo timeout. | CR4 |
 | `telemetry_trivial_duration_threshold_s` | `1.00` | giây (s) | `[0.50, 2.00]` | Ngưỡng thời lượng tối thiểu của một attempt; dưới ngưỡng này bị đánh dấu `trivial_attempt_duration: true` (bị loại khỏi mẫu). | EC3 |
 | `telemetry_webgl_storage_key` | `"ww_fsm_trace_latest"` | chuỗi ký tự | khóa duy nhất | Tên khóa định danh lưu trữ chuỗi JSON dự phòng vào `window.localStorage` của trình duyệt WebGL. | EC2 |
+| `telemetry_flush_hotkey` | `"F12"` | phím điều khiển | phím hợp lệ | Phím nóng cưỡng bức xả vết sự kiện FSM hiện tại xuống tệp/bộ nhớ tạm trong bản build phát triển. | Section Audio |
 
 ## Visual/Audio Requirements
 
