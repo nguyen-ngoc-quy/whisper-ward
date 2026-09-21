@@ -60,7 +60,7 @@ demo. See the concept's review history for the fully-pinned contract surface
 | 17 | Scene / Asset management *(inferred)* | Core | Vertical Slice | Not Started | — | Event bus |
 | 18 | Physics & collision config *(inferred)* | Core | MVP | **Approved** (2026-09-21 — lean review approved; 8/8 core sections + 16 ACs verified; D1–D6 formulas & constants registered in entities.yaml; zero cross-doc conflicts) | `design/gdd/physics-collision-config.md` | — |
 | 19 | Input system *(inferred)* | Core | MVP | **Approved** (2026-09-21 — lean review approved; 8/8 core sections + 14 ACs verified; D1–D4 formulas & constants registered in entities.yaml; zero cross-doc conflicts) | `design/gdd/input-system.md` | — |
-| 20 | Camera (Cinemachine rig) *(inferred)* | Core | MVP | Not Started | — | Player Controller, Input |
+| 20 | Camera (Cinemachine rig) *(inferred)* | Core | MVP | **Approved** (2026-09-21 — lean review approved; 8/8 core sections + 12 ACs verified; D1–D4 formulas & constants registered in entities.yaml; zero cross-doc conflicts) | `design/gdd/camera-cinemachine.md` | Player Controller, Input |
 | 21 | VFX / telegraph layer *(inferred)* | UI & Feedback | Target | Not Started | — | Guard AI, Perception, Event bus |
 
 ---

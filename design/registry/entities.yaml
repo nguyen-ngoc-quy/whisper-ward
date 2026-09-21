@@ -303,6 +303,38 @@ formula_definitions:
     note: "Suspicion Drone Modulation (D4): Modulates non-diegetic psychological drone pitch exponentially (+1 octave) and volume linearly across the dominant threat level."
     consumed_by: [Audio & UI GDD, Suspicion/Grade GDD, Guard AI FSM GDD]
 
+  - name: camera_relative_basis_transform
+    expression: "d_raw = (I_y * sin(theta) + I_x * cos(theta), I_y * cos(theta) - I_x * sin(theta)); d_move = d_raw / ||d_raw|| if ||d_raw|| > 0.01 else (0, 0)"
+    source: design/gdd/camera-cinemachine.md  # D1 (rev 2026-09-21)
+    output_range: "||d_move|| in {0.0, 1.0}, d_X, d_Z in [-1.0, 1.0]"
+    variables: [I_x, I_y, theta, d_X, d_Z, d_raw, d_move]
+    note: "Camera-Relative Basis Transformation & Normalization (D1): Transforms controller WASD inputs to planar world-space movement vector based on camera yaw theta, enforcing exact unit magnitude."
+    consumed_by: [Camera Rig GDD, Player Controller GDD, Input System GDD]
+
+  - name: spherecast_deocclusion_distance
+    expression: "D_target = max(D_min, d_hit - R_cam_col) if SpherecastHit(origin, R_cam_col, -Forward_cam, D_nom, World) else D_nom"
+    source: design/gdd/camera-cinemachine.md  # D2 (rev 2026-09-21)
+    output_range: "D_target in [0.40, 2.80] m"
+    variables: [D_target, D_min, D_nom, d_hit, R_cam_col, origin, Forward_cam]
+    note: "Spherecast Deocclusion Solver (D2): Computes safe distance to prevent camera geometry clipping into E20 Solid walls using 0.20 m sphere radius."
+    consumed_by: [Camera Rig GDD, Physics GDD, Level GDD]
+
+  - name: asymmetric_distance_damping
+    expression: "D(t + dt) = D_target if D_target < D(t) else D(t) + (D_target - D(t)) * (1 - exp(-dt / tau_recover))"
+    source: design/gdd/camera-cinemachine.md  # D3 (rev 2026-09-21)
+    output_range: "D(t) in [0.40, 2.80] m"
+    variables: [D_t, D_target, dt, tau_recover]
+    note: "Asymmetric Distance Damping (D3): Instant collapse on wall occlusion, smooth exponential recovery (tau = 0.25 s) when clear of obstacles."
+    consumed_by: [Camera Rig GDD]
+
+  - name: dynamic_chase_fov_scaling
+    expression: "FOV(t + dt) = FOV(t) + (FOV_target - FOV(t)) * (1 - exp(-dt / tau_fov)); FOV_target = 68.0 deg (tau=0.18 s) if Chase else 60.0 deg (tau=0.45 s)"
+    source: design/gdd/camera-cinemachine.md  # D4 (rev 2026-09-21)
+    output_range: "FOV in [60.0, 68.0] deg"
+    variables: [FOV_t, FOV_target, dt, tau_fov]
+    note: "Dynamic Chase FOV Scaling (D4): Dynamically scales camera field of view based on guard alert state to induce subtle speed and panic perception."
+    consumed_by: [Camera Rig GDD, Guard AI FSM GDD, Suspicion/Grade GDD]
+
 constants:
   - name: min_wall_thickness
     value: 0.10  # m — minimum solid wall thickness invariant (D6)
@@ -1340,6 +1372,143 @@ audio_ui_feedback:
     source: design/gdd/audio-ui-feedback.md  # Tuning Knobs / EC5
     owned_by: "Audio & UI GDD"
     consumed_by: [Audio & UI GDD]
+
+camera_cinemachine:
+  - name: camera_nominal_distance
+    value: 2.80  # m — default camera distance in free orbit
+    safe_range: "[1.50, 4.50] m"
+    note: "Nominal camera follow distance under unoccluded conditions, balancing tight asylum corridor sightlines with player vulnerability."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR3, D2
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Player Controller GDD]
+
+  - name: camera_min_distance
+    value: 0.40  # m — minimum camera distance when compressed by walls
+    safe_range: "[0.25, 0.80] m"
+    note: "Hard floor for camera spherecast deocclusion solver to prevent geometry clipping into player head mesh."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR4, D2
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Physics GDD]
+
+  - name: camera_shoulder_offset_x
+    value: 0.35  # m — lateral offset to the right shoulder
+    safe_range: "[0.00, 0.60] m"
+    note: "Over-the-shoulder lateral offset placing player at left third of screen, framing reticle and forward trajectory."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR3
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD]
+
+  - name: camera_target_height_y
+    value: 1.35  # m — chest look-at anchor height above ground
+    safe_range: "[1.00, 1.80] m"
+    note: "Vertical height of player chest anchor for camera orbit centering."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR3
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Player Controller GDD]
+
+  - name: camera_spherecast_radius
+    value: 0.20  # m — collision test sphere radius
+    safe_range: "[0.10, 0.35] m"
+    note: "Sweep radius for World layer obstacle deocclusion query, protecting near clip plane (0.05 m)."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR4, D2
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Physics GDD]
+
+  - name: camera_distance_recover_tau
+    value: 0.25  # s — exponential damping time constant for distance recovery
+    safe_range: "[0.10, 0.60] s"
+    note: "Recovery smoothing time constant when stepping out of occluded geometry to prevent visual snapping."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR5, D3
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD]
+
+  - name: camera_vertical_leash_threshold
+    value: 2.50  # m — maximum vertical separation during drops
+    safe_range: "[1.50, 4.00] m"
+    note: "Hard threshold vertical distance during high-speed vertical drops (Vy < -8.0 m/s) overriding damping to snap camera down."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / EC2
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Player Controller GDD]
+
+  - name: camera_dither_fade_start
+    value: 0.60  # m — distance threshold to activate dither fade
+    safe_range: "[0.45, 0.90] m"
+    note: "Camera distance below which player character mesh dither transparency activates to prevent sightline blocking in tight corners."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / EC1
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Player Controller GDD]
+
+  - name: camera_base_fov
+    value: 60.0  # deg — baseline vertical field of view
+    safe_range: "[50.0, 75.0] deg"
+    note: "Default vertical field of view in neutral exploration and stealth state."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR8, D4
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD]
+
+  - name: camera_chase_fov
+    value: 68.0  # deg — expanded vertical field of view during chase
+    safe_range: "[60.0, 85.0] deg"
+    note: "Dynamic expanded FOV applied when any guard enters Chase state to enhance sense of speed and threat."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR8, D4
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Guard AI FSM GDD]
+
+  - name: camera_fov_expand_tau
+    value: 0.18  # s — time constant for FOV expansion
+    safe_range: "[0.08, 0.40] s"
+    note: "Exponential smoothing time constant when opening FOV upon Chase initiation."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / D4
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD]
+
+  - name: camera_fov_contract_tau
+    value: 0.45  # s — time constant for FOV contraction
+    safe_range: "[0.20, 1.00] s"
+    note: "Exponential smoothing time constant when relaxing FOV back to base upon escaping Chase."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / D4
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD]
+
+  - name: camera_hidespot_blend_time
+    value: 0.35  # s — blend duration for hide spot transitions
+    safe_range: "[0.20, 0.60] s"
+    note: "Cinemachine blend time between CM_FreeOrbit and CM_HideSpot during locker entrance and exit."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR1, CR7
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Player Movement & Hide GDD]
+
+  - name: camera_pitch_min
+    value: -35.0  # deg — downward pitch clamp limit
+    safe_range: "[-50.0, -20.0] deg"
+    note: "Clamp preventing camera from dipping below ground plane or inverting view."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR2, EC5
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD]
+
+  - name: camera_pitch_max
+    value: 65.0  # deg — upward pitch clamp limit
+    safe_range: "[45.0, 80.0] deg"
+    note: "Clamp preventing camera from exceeding overhead angles and encountering gimbal lock."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR2, EC5
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD]
+
+  - name: camera_max_angular_velocity
+    value: 720.0  # deg/s — maximum angular rotation speed
+    safe_range: "[360.0, 1440.0] deg/s"
+    note: "Cap on camera angular rotation speed to reject mouse hardware delta spikes and prevent motion sickness."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / EC4
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Input System GDD]
+
+  - name: camera_mouse_sensitivity_default
+    value: 0.30  # unitless — default mouse sensitivity scale
+    safe_range: "[0.05, 1.00]"
+    note: "Default mouse look sensitivity factor for PC and WebGL platforms."
+    source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR2
+    owned_by: "Camera Cinemachine GDD"
+    consumed_by: [Camera Cinemachine GDD, Input System GDD]
 
 guard_noise_response:
   - name: noise_response_profile
