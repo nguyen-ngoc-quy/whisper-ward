@@ -335,6 +335,38 @@ formula_definitions:
     note: "Dynamic Chase FOV Scaling (D4): Dynamically scales camera field of view based on guard alert state to induce subtle speed and panic perception."
     consumed_by: [Camera Rig GDD, Guard AI FSM GDD, Suspicion/Grade GDD]
 
+  - name: ring_buffer_valid_count
+    expression: "K_valid = min(S_global - S_epoch_start, N_ring)"
+    source: design/gdd/suspicion-attribution-telemetry.md  # D1 (rev 2026-09-21)
+    output_range: "K_valid in [0, 2048]"
+    variables: [K_valid, S_global, S_epoch_start, N_ring]
+    note: "Valid In-Memory Record Span Count (D1): Computes the exact number of valid, contiguous trace records currently stored in the static ring buffer for the active attempt epoch."
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: claim1_forensic_legibility_score
+    expression: "Score_Claim1 = sum(M(p)) / N_first_captures"
+    source: design/gdd/suspicion-attribution-telemetry.md  # D2 (rev 2026-09-21)
+    output_range: "Score_Claim1 in [0.0, 1.0]; target >= 0.80"
+    variables: [Score_Claim1, M_p, N_first_captures]
+    note: "Claim 1 Forensic Detection Legibility (D2): Evaluates whether >= 80% of first-time captured players can accurately articulate the true FSM causal chain that led to their capture (N >= 5)."
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: claim2_dual_sub_bar_comprehension_score
+    expression: "Pass_Claim2(p) = C(p) * E(p); Score_Claim2 = sum(Pass_Claim2(p)) / N_testers"
+    source: design/gdd/suspicion-attribution-telemetry.md  # D3 (rev 2026-09-21)
+    output_range: "Score_Claim2 in [0.0, 1.0]; target >= 0.60"
+    variables: [Score_Claim2, Pass_Claim2_p, C_p, E_p, N_testers]
+    note: "Claim 2 Dual Sub-Bar Comprehension & Execution (D3): Evaluates whether >= 60% of testers understand both meters (C=1) and cleanly execute disengagement without LOS residual escalation (E=1, R_start <= 0.05, N >= 5)."
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: claim3_unprompted_tool_adoption_score
+    expression: "Score_Claim3 = sum_{p in {D_reach=1}}(U(p)) / sum(D_reach(p))"
+    source: design/gdd/suspicion-attribution-telemetry.md  # D4 (rev 2026-09-21)
+    output_range: "Score_Claim3 in [0.0, 1.0]; target >= 0.60"
+    variables: [Score_Claim3, U_p, D_reach_p]
+    note: "Claim 3 Unprompted Tool Adoption (D4): Evaluates whether >= 60% of players who reach a Burst pickup (d <= 1.20 m) spontaneously deploy the air burst tool before being chased (N_presented >= 5)."
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
 constants:
   - name: min_wall_thickness
     value: 0.10  # m — minimum solid wall thickness invariant (D6)
@@ -1509,6 +1541,119 @@ camera_cinemachine:
     source: design/gdd/camera-cinemachine.md  # Tuning Knobs / CR2
     owned_by: "Camera Cinemachine GDD"
     consumed_by: [Camera Cinemachine GDD, Input System GDD]
+
+suspicion_attribution_telemetry:
+  - name: telemetry_ring_buffer_capacity
+    value: 2048  # entries — fixed power-of-two capacity for blittable FsmTraceRecord ring buffer
+    safe_range: "[1024, 4096] entries"
+    note: "Static capacity of in-memory telemetry ring buffer enabling zero-GC bitwise indexing (S_global & 2047)."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / CR1, D1
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_record_max_bytes
+    value: 128  # bytes — maximum size of blittable FsmTraceRecord struct
+    safe_range: "[64, 256] bytes"
+    note: "Memory budget per trace record to ensure deterministic cache line fit and zero heap allocation."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / CR1
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_total_memory_budget_bytes
+    value: 262144  # bytes (256 KiB) — total in-memory ring buffer static footprint
+    safe_range: "[131072, 524288] bytes"
+    note: "Hard ceiling on total RAM consumed by telemetry ring buffer during gameplay."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / CR1
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_debug_overlay
+    value: false  # boolean — editor scene view / dev build gizmo visualization flag
+    safe_range: "boolean: false | true"
+    note: "Toggles on-screen debug gizmos and FSM trace HUD overlay in development builds."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / Section Visual/Audio
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_max_recent_events_display
+    value: 20  # entries — maximum events shown in dev HUD
+    safe_range: "[10, 50] entries"
+    note: "Number of most recent events rendered on the dev overlay panel."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_webgl_toast_duration_seconds
+    value: 2.5  # s — duration of clipboard copy toast notification on WebGL
+    safe_range: "[1.0, 5.0] s"
+    note: "On-screen display duration for the WebGL clipboard copy notification."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / UI Requirements
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_claim1_target_ratio
+    value: 0.80  # unitless — minimum passing fraction for Claim 1 (80%)
+    safe_range: "[0.70, 0.90]"
+    note: "Target pass ratio for first-capture forensic legibility validation."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D2
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_claim1_min_sample_size
+    value: 5  # testers — minimum sample size for Claim 1 evaluation
+    safe_range: "[3, 20] testers"
+    note: "Minimum count of unique first-capture playtest subjects required to evaluate Claim 1."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D2
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_claim2_target_ratio
+    value: 0.60  # unitless — minimum passing fraction for Claim 2 (60%)
+    safe_range: "[0.50, 0.80]"
+    note: "Target pass ratio for dual sub-bar comprehension and execution."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D3
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_claim2_min_sample_size
+    value: 5  # testers — minimum sample size for Claim 2 evaluation
+    safe_range: "[3, 20] testers"
+    note: "Minimum count of unique playtest subjects required to evaluate Claim 2."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D3
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_claim2_residual_epsilon
+    value: 0.05  # unitless — maximum tolerable residual alert R_start for clean execution
+    safe_range: "[0.01, 0.10]"
+    note: "Threshold under which residual alert is considered negligible for Claim 2 clean disengagement."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D3
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_claim3_target_ratio
+    value: 0.60  # unitless — minimum passing fraction for Claim 3 (60%)
+    safe_range: "[0.50, 0.80]"
+    note: "Target pass ratio for unprompted tool adoption."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D4
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_claim3_min_sample_size
+    value: 5  # testers — minimum sample size for Claim 3 evaluation
+    safe_range: "[3, 20] testers"
+    note: "Minimum count of unique playtest subjects reaching pickup required to evaluate Claim 3."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D4
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD]
+
+  - name: telemetry_claim3_pickup_reach_radius
+    value: 1.20  # m — maximum distance to pickup to qualify as presented/reached
+    safe_range: "[0.80, 2.00] m"
+    note: "Radial proximity threshold to a Burst pickup triggering the pickup-reached telemetry event."
+    source: design/gdd/suspicion-attribution-telemetry.md  # Tuning Knobs / D4
+    owned_by: "Suspicion Attribution Telemetry GDD"
+    consumed_by: [Suspicion Attribution Telemetry GDD, Level Burst Route GDD]
 
 guard_noise_response:
   - name: noise_response_profile
