@@ -12,9 +12,9 @@
 | Metric | Count | Percentage |
 | :--- | :--- | :--- |
 | **Total Technical Requirements** | **46** | **100.0%** |
-| **Covered by Accepted ADRs** | **22** | **47.8%** |
+| **Covered by Accepted ADRs** | **28** | **60.9%** |
 | **Foundation Layer Requirements** | **9 / 9** | **100.0% (Zero Foundation Gaps)** |
-| **Core Layer Requirements** | **4 / 10** | **40.0%** (6 planned in ADR-0007..008) |
+| **Core Layer Requirements** | **10 / 10** | **100.0% (Zero Core Gaps)** |
 | **Feature Layer Requirements** | **7 / 19** | **36.8%** (12 planned in ADR-0009..011) |
 | **Presentation Layer Requirements**| **5 / 8** | **62.5%** (3 planned in ADR-0012) |
 | **Unplanned Coverage Gaps** | **0** | **0.0%** |
@@ -45,12 +45,12 @@
 | **TR-CORE-002** | `player-third-person-controller.md` | #11 Controller | Anti-kiting kinematic invariant: $V_{\text{chase}} / V_{\text{run}} \ge 1.20$. | `ADR-0006` | ✅ **Covered (Accepted)** |
 | **TR-CORE-003** | `player-third-person-controller.md` | #11 Controller | Camera-relative planar motion basis transformation. | `ADR-0006` | ✅ **Covered (Accepted)** |
 | **TR-CORE-004** | `player-third-person-controller.md` | #11 Controller | Stance transition headroom clearance SphereCast ($R=0.25\text{ m}, H=1.80\text{ m}$). | `ADR-0005` | ✅ **Covered (Accepted)** |
-| **TR-CORE-005** | `navmesh-pathfinding.md` | #12 NavMesh | `NavMesh.CalculatePath` non-alloc buffer queries. | `ADR-0007` | ⚠️ Planned (Pre-Prod) |
-| **TR-CORE-006** | `navmesh-pathfinding.md` | #12 NavMesh | Spatial corridor clearance enforcement ($\ge 1.50\text{ m}$) for patrol paths. | `ADR-0007` | ⚠️ Planned (Pre-Prod) |
-| **TR-CORE-007** | `navmesh-pathfinding.md` | #12 NavMesh | Off-mesh links strictly disabled (planar 2.5D surface navigation only). | `ADR-0007` | ⚠️ Planned (Pre-Prod) |
-| **TR-CORE-008** | `camera-cinemachine.md` | #20 Camera | Cinemachine 3rd-person follow rig ($X=0.45\text{ m}, Y=1.65\text{ m}, Z=-3.20\text{ m}$). | `ADR-0008` | ⚠️ Planned (Pre-Prod) |
-| **TR-CORE-009** | `camera-cinemachine.md` | #20 Camera | Asymmetric occlusion recovery damping ($\tau_{\text{in}}=0.05\text{s}, \tau_{\text{out}}=0.40\text{s}$). | `ADR-0008` | ⚠️ Planned (Pre-Prod) |
-| **TR-CORE-010** | `camera-cinemachine.md` | #20 Camera | Dynamic FOV expansion during active chase ($60^\circ \to 68^\circ, \tau=0.20\text{s}$). | `ADR-0008` | ⚠️ Planned (Pre-Prod) |
+| **TR-CORE-005** | `navmesh-pathfinding.md` | #12 NavMesh | `NavMesh.CalculatePath` non-alloc buffer queries. | `ADR-0007` | ✅ **Covered (Accepted)** |
+| **TR-CORE-006** | `navmesh-pathfinding.md` | #12 NavMesh | Spatial corridor clearance enforcement ($\ge 1.50\text{ m}$) for patrol paths. | `ADR-0007` | ✅ **Covered (Accepted)** |
+| **TR-CORE-007** | `navmesh-pathfinding.md` | #12 NavMesh | Off-mesh links strictly disabled (planar 2.5D surface navigation only). | `ADR-0007` | ✅ **Covered (Accepted)** |
+| **TR-CORE-008** | `camera-cinemachine.md` | #20 Camera | Cinemachine 3rd-person follow rig ($X=+0.35\text{ m}, Y=1.35\text{ m}, D_{\text{nom}}=2.80\text{ m}$). | `ADR-0008` | ✅ **Covered (Accepted)** |
+| **TR-CORE-009** | `camera-cinemachine.md` | #20 Camera | Asymmetric occlusion recovery damping ($R=0.20\text{ m}, \tau_{\text{recover}}=0.25\text{ s}$). | `ADR-0008` | ✅ **Covered (Accepted)** |
+| **TR-CORE-010** | `camera-cinemachine.md` | #20 Camera | Dynamic FOV expansion during active chase ($60^\circ \to 68^\circ, \tau=0.60\text{ s}$). | `ADR-0008` | ✅ **Covered (Accepted)** |
 
 ### Feature Layer (Tier 3 — AI, Sensing, Mechanics, Grading)
 
@@ -94,8 +94,8 @@
 ## 3. Scheduled Pre-Production ADR Roadmap
 
 1. **`ADR-0006`**: *Kinematic Player Controller, Stance FSM & Headroom SphereCast* (Covers `TR-CORE-001..003`, `TR-FEAT-015..017`) — ✅ **Accepted**
-2. **`ADR-0007`**: *NavMesh NonAlloc Query Service & 2.5D Catch Gate Verification* (Covers `TR-CORE-005..007`)
-3. **`ADR-0008`**: *Cinemachine 3rd-Person Camera Rig & Occlusion SphereCast Damping* (Covers `TR-CORE-008..010`)
+2. **`ADR-0007`**: *NavMesh NonAlloc Query Service & 2.5D Catch Gate Verification* (Covers `TR-CORE-005..007`) — ✅ **Accepted**
+3. **`ADR-0008`**: *Cinemachine 3rd-Person Camera Rig & Occlusion SphereCast Damping* (Covers `TR-CORE-008..010`) — ✅ **Accepted**
 4. **`ADR-0009`**: *Perception Dual-Threat Pipeline, Raycast Budget & Dynamic Thresholds* (Covers `TR-FEAT-006..008`)
 5. **`ADR-0010`**: *Guard AI 3-State FSM, Re-anchor Budget & Witnessed HideSpot Authority* (Covers `TR-FEAT-001..005`)
 6. **`ADR-0011`**: *Player Noise Stride Ledger, Burst Ballistics & Zero-Deduction Distraction* (Covers `TR-FEAT-011..013`)

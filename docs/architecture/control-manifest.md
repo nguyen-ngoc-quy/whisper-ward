@@ -3,7 +3,7 @@
 > **Engine**: Unity 6 LTS (6000.3.17f1)  
 > **Last Updated**: 2026-09-21  
 > **Manifest Version**: 2026-09-21  
-> **ADRs Covered**: ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006  
+> **ADRs Covered**: ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008  
 > **Status**: Active — regenerate with `/create-control-manifest update` when ADRs change  
 
 `Manifest Version` is the date this manifest was generated. Story files embed this date when created. `/story-readiness` compares a story's embedded version to this field to detect stories written against stale rules. Always matches `Last Updated` — they are the same date, serving different consumers.
@@ -64,6 +64,16 @@ This manifest is a programmer's quick-reference extracted from all Accepted ADRs
 - **Stand Clearance Query with Ground Insetting**: Probe stand headroom using `Physics.OverlapCapsuleNonAlloc` against E20 LayerMask with lower hemisphere inset by $\ge \text{skin\_width}$ above the feet plane and top margin $\epsilon_{\text{probe}} = 0.03\text{ m}$. Fail safe (deny stand) if blocked or buffer saturates. — source: `ADR-0006`
 - **Downward Ground-Snap Velocity**: Apply continuous downward bias velocity ($v_{\text{down}} = -3.0\text{ m/s}$) during grounded locomotion in `CharacterController.Move()` to eliminate `isGrounded` micro-flicker. — source: `ADR-0006`
 - **Dynamic Step Offset**: Set `CharacterController.stepOffset` dynamically: $0.30\text{ m}$ while Standing; $0.15\text{ m}$ while Crouched. — source: `ADR-0006`
+- **Agent-Parameterized Path Calculation**: All path calculations must use `agent.CalculatePath(targetPosition, _sharedPath)` parameterized to the specific agent's radius ($0.40\text{ m}$) and step height ($0.30\text{ m}$). — source: `ADR-0007`
+- **Zero-Allocation NavMesh Corner Extraction**: NavMesh path queries must never access `path.corners` directly; use pre-allocated buffers with `path.GetCornersNonAlloc(_cornerBuffer)`. — source: `ADR-0007`
+- **Surface Snapping Threshold**: World target coordinates must snap to NavMesh using `NavMesh.SamplePosition` with a maximum search radius of $\le 0.40\text{ m}$ before path calculation. — source: `ADR-0007`
+- **Cumulative 3D Polyline Distance Metric**: Path distance $d_{\text{path}}$ is computed as the piecewise sum of Euclidean corner segments; catch gate requires $\text{status} == \text{PathComplete} \land d_{\text{path}} \le 5.50\text{ m}$. — source: `ADR-0007`
+- **RVO Avoidance Priority Hierarchy**: Guard avoidance priorities strictly ordered: Chase (10), Investigate (30), Patrol (50). Player character is not an obstacle. — source: `ADR-0007`
+- **LateUpdate Cinemachine Tracking**: Camera tracking and CinemachineBrain execution must occur exclusively in `LateUpdate` to eliminate physics tracking jitter. — source: `ADR-0008`
+- **Independent Camera Orbit & Pitch Clamping**: Mouse look pitch strictly clamped to $[-35^\circ, +65^\circ]$; camera rotation while stationary must never rotate the character model (`AC-P25`). — source: `ADR-0008`
+- **SphereCast Wall Deocclusion with Damped Recovery**: Camera occlusion evaluation uses $R=0.20\text{ m}$ SphereCast against World geometry; snaps inward instantly on hit, recovers outward smoothly with exponential damping ($\tau = 0.25\text{ s}$). — source: `ADR-0008`
+- **Dynamic Chase FOV Scaling**: Smoothly interpolate horizontal FOV from $60.0^\circ$ to $68.0^\circ$ over $0.6\text{ s}$ during alert/chase, returning over $1.5\text{ s}$. — source: `ADR-0008`
+- **HideSpot Portal Blending**: Transition to fixed portal camera inside hide spots over $0.35\text{ s}$ EaseInOut blend. — source: `ADR-0008`
 
 ### Forbidden Approaches
 - **Never Rely on Rigidbody Dynamics for Burst**: Never attach a dynamic Rigidbody or PhysX physics simulation to the Burst projectile; simulation must remain kinematic and deterministic across platforms. — source: `ADR-0002`
@@ -71,10 +81,17 @@ This manifest is a programmer's quick-reference extracted from all Accepted ADRs
 - **Never Couple Locomotion Stance to Render Framerate**: Stance transitions and input buffer draining must use virtual clock timing ($150\text{ ms}$ window), never variable `Time.deltaTime`. — source: `ADR-0005`
 - **Never Query NavMesh or Physics with Allocating Methods**: Never use allocating calls (e.g. `Physics.RaycastAll`, `NavMesh.CalculatePath` without pre-allocated path buffer); all queries must use pre-allocated non-allocating buffers. — source: `ADR-0002`, `ADR-0005`, `ADR-0006`
 - **Never Resize Capsule Center Independently from Height**: Never set `CharacterController.center.y` to a fixed value; it must strictly equal `height * 0.5f` to prevent feet detachment from the ground plane. — source: `ADR-0006`
+- **Never Use Static NavMesh.CalculatePath**: Static `NavMesh.CalculatePath` is strictly forbidden because it omits agent radius and step clearance parameters. — source: `ADR-0007`
+- **Never Access navMeshPath.corners Array Directly**: Accessing `.corners` allocates arrays on the heap; use `GetCornersNonAlloc` exclusively. — source: `ADR-0007`
+- **Never Make Player a NavMeshObstacle**: The player must never have a `NavMeshObstacle` component that carves the mesh at runtime. — source: `ADR-0007`
+- **Never Rotate Player Model on Stationary Camera Orbit**: When player velocity is zero, rotating the camera must never mutate the character's facing direction (`AC-P25`). — source: `ADR-0008`
+- **Never Update Camera Rig in Update or FixedUpdate**: Camera follow logic must strictly execute in `LateUpdate`. — source: `ADR-0008`
 
 ### Performance Guardrails
 - **Burst Substep Fixed Interval**: Fixed simulation substep $\Delta t = 0.02\text{ s}$ ($50\text{ Hz}$) with maximum 10 simulation iterations per frame backlog ceiling. — source: `ADR-0002`
 - **Controller Movement Budget**: Maximum 0.80 ms per frame budget for character locomotion, stance evaluation, and collision resolution. — source: `ADR-0005`, `ADR-0006`
+- **NavMesh Query Frame Budget**: Maximum 0.50 ms per frame total for all NavMesh queries; max 64 pre-allocated corners. — source: `ADR-0007`
+- **Camera Rig Frame Budget**: Maximum 0.30 ms per frame for camera orbit, occlusion spherecast, and blend orchestration. — source: `ADR-0008`
 
 ---
 

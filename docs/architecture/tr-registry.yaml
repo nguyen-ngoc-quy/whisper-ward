@@ -128,7 +128,7 @@ requirements:
     domain: Navigation
     requirement: "Agent-parameterized NavMesh.CalculatePath invocation using pre-allocated NavMeshPath buffers (0 GC)."
     adr: ADR-0007
-    status: Planned
+    status: Accepted
 
   - id: TR-CORE-006
     gdd: navmesh-pathfinding.md
@@ -137,7 +137,7 @@ requirements:
     domain: Navigation
     requirement: "Spatial corridor clearance enforcement: minimum navigable width >= 1.50m for all patrol paths."
     adr: ADR-0007
-    status: Planned
+    status: Accepted
 
   - id: TR-CORE-007
     gdd: navmesh-pathfinding.md
@@ -146,34 +146,34 @@ requirements:
     domain: Navigation
     requirement: "Off-mesh links strictly disabled (planar 2.5D surface navigation only)."
     adr: ADR-0007
-    status: Planned
+    status: Accepted
 
   - id: TR-CORE-008
     gdd: camera-cinemachine.md
     system: "#20 Camera"
     layer: Core
     domain: Camera
-    requirement: "Cinemachine 3rd-person follow rig (X=0.45m, Y=1.65m, Z=-3.20m)."
+    requirement: "Cinemachine 3rd-person follow rig (right-shoulder framing, pitch clamped [-35 deg, +65 deg])."
     adr: ADR-0008
-    status: Planned
+    status: Accepted
 
   - id: TR-CORE-009
     gdd: camera-cinemachine.md
     system: "#20 Camera"
     layer: Core
     domain: Camera
-    requirement: "Asymmetric occlusion recovery damping: fast push-in (tau_in=0.05s), smooth pull-out (tau_out=0.40s)."
+    requirement: "Asymmetric occlusion recovery damping: fast push-in with smooth exponential pull-out recovery."
     adr: ADR-0008
-    status: Planned
+    status: Accepted
 
   - id: TR-CORE-010
     gdd: camera-cinemachine.md
     system: "#20 Camera"
     layer: Core
     domain: Camera
-    requirement: "Dynamic FOV expansion during active chase (60 deg to 68 deg, tau=0.20s)."
+    requirement: "Dynamic FOV expansion during active chase (60 deg to 68 deg, smooth interpolation)."
     adr: ADR-0008
-    status: Planned
+    status: Accepted
 
   - id: TR-FEAT-001
     gdd: guard-ai-fsm.md
