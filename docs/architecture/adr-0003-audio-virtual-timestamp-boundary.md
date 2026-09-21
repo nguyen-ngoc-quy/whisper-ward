@@ -1,10 +1,10 @@
 # ADR-0003: Audio Virtual Timestamp Boundary
 
 ## Status
-Proposed
+Accepted
 
 ## Date
-2026-08-30
+2026-08-30 (Accepted: 2026-09-21 via Master Architecture Synthesis)
 
 ## Engine Compatibility
 

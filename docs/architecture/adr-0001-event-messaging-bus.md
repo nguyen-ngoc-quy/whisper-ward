@@ -1,10 +1,10 @@
 # ADR-0001: Deterministic Event/Messaging Bus for Gameplay Contracts
 
 ## Status
-Proposed
+Accepted
 
 ## Date
-2026-08-29
+2026-08-29 (Accepted: 2026-09-21 via Master Architecture Synthesis)
 
 ## Engine Compatibility
 
@@ -36,8 +36,8 @@ implementation in `src/AI/Core/EventBus.cs` was a minimal static pub/sub helper:
 its `Unsubscribe` method was not implemented, delivery was immediate, and it had
 no contract for `fact_id` deduplication, `attempt_epoch` invalidation, retry
 handling, or deterministic ordering. The current source contains a provisional
-`SessionEventBus` adapter for those seams, but the ADR remains Proposed and its
-transactional Perception handoff is now represented by the typed `AcceptNoise`/retry
+`SessionEventBus` adapter for those seams, and the ADR is now Accepted (2026-09-21); its
+transactional Perception handoff is represented by the typed `AcceptNoise`/retry
 contract below; current runtime and test evidence remains bounded to the available
 source/fixture verification.
 
@@ -81,7 +81,7 @@ registry.
 > scene reload, new playable attempt, pause/resume, and pool/unpool — is authoritative in
 > `design/registry/entities.yaml` and reproduced verbatim in `player-noise.md §Ownership`.
 > The bus's `BeginEpoch` / `BeginSession` barriers consume this table; no file owns a
-> distinct version. ADR status remains **Proposed**; this note is additive only.
+> distinct version. ADR status is **Accepted** (2026-09-21); this note is additive only.
 
 **Implementation status (not acceptance):** `SessionEventBus` currently supplies a
 bounded queued service, typed token subscriptions, phase-tagged events, ingress and

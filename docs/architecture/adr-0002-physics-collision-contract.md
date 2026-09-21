@@ -1,10 +1,10 @@
 # ADR-0002: Shared Physics and Collision Contract
 
 ## Status
-Proposed
+Accepted
 
 ## Date
-2026-08-29
+2026-08-29 (Accepted: 2026-09-21 via Master Architecture Synthesis)
 
 ## Engine Compatibility
 
