@@ -28,6 +28,7 @@
   - `ADR-0002`: Shared Physics and Collision Contract (Accepted)
   - `ADR-0003`: Audio Virtual Timestamp Boundary (Accepted)
   - `ADR-0004`: Suspicion Meter and Room Grade (Accepted)
+  - `ADR-0005`: Input Action Asset & Stance Buffering Contract (Accepted)
 
 ---
 
@@ -367,12 +368,13 @@ namespace WhisperWard.Core.Contracts
 | **ADR-0002** | Shared Physics and Collision Contract | Unity 6 LTS (LOW) | #18, #11, #12, #2, #3, #5 | **Accepted** | **ACCEPTED (Confirmed)**. Covers TR-FOUND-005..007. Sets queriesHitTriggers standard. |
 | **ADR-0003** | Audio Virtual Timestamp Boundary | Unity 6 LTS (LOW) | #13, #3 | **Accepted** | **ACCEPTED (Confirmed)**. Covers TR-PRES-006..008. Isolates DSP reporting from sim time. |
 | **ADR-0004** | Suspicion Meter and Room Grade | Unity 6 LTS (LOW) | #7, #10 | **Accepted** | **ACCEPTED (Confirmed)**. Covers TR-FEAT-018..019 and TR-PRES-001..002. |
+| **ADR-0005** | Input Action Asset & Stance Buffering | Unity 6 LTS (LOW) | #19, #11, #5, #3 | **Accepted** | **ACCEPTED (Confirmed)**. Covers TR-FOUND-008..009. Zero-GC hot path & 150ms buffer. |
 
 ### 7.2 Requirements Traceability Matrix
 - **Foundation Layer (TR-FOUND-001 to 009)**:
-  - `TR-FOUND-001..004` (Event Bus): Covered by `ADR-0001`.
-  - `TR-FOUND-005..007` (Physics): Covered by `ADR-0002`.
-  - `TR-FOUND-008..009` (Input): Targeted for `ADR-0005`.
+  - `TR-FOUND-001..004` (Event Bus): Covered by `ADR-0001` (Accepted).
+  - `TR-FOUND-005..007` (Physics): Covered by `ADR-0002` (Accepted).
+  - `TR-FOUND-008..009` (Input): Covered by `ADR-0005` (Accepted). **Zero Foundation Gaps Remaining**.
 - **Core Layer (TR-CORE-001 to 010)**:
   - `TR-CORE-001..004` (Locomotion & Stance): Targeted for `ADR-0006`.
   - `TR-CORE-005..007` (NavMesh & Catch Gate): Targeted for `ADR-0007`.
@@ -386,7 +388,7 @@ namespace WhisperWard.Core.Contracts
 - **Presentation Layer (TR-PRES-001 to 008)**:
   - `TR-PRES-001..002` (Meter Presenter & Chevron): Covered by `ADR-0004` (Accepted).
   - `TR-PRES-003..005` (Telemetry Struct Ring Buffer): Targeted for `ADR-0012`.
-  - `TR-PRES-006..008` (Audio DSP & Drone): Covered by `ADR-0003`.
+  - `TR-PRES-006..008` (Audio DSP & Drone): Covered by `ADR-0003` (Accepted).
 
 ---
 
@@ -394,11 +396,11 @@ namespace WhisperWard.Core.Contracts
 
 Following the Producer's phased implementation plan, ADRs are scheduled in 4 strict tiers:
 
-### Tier 1: Foundation Layer (Blocking before any feature code)
+### Tier 1: Foundation Layer (Blocking before any feature code) — 100% ACCEPTED
 1. **`ADR-0001`**: Deterministic Event/Messaging Bus → **Accepted** (2026-09-21)
 2. **`ADR-0002`**: Shared Physics and Collision Contract → **Accepted** (2026-09-21)
 3. **`ADR-0003`**: Audio Virtual Timestamp Boundary → **Accepted** (2026-09-21)
-4. **Author `ADR-0005`**: *Input Action Asset & Stance Buffering Contract* (Unblocks Player Controller & Throw input)
+4. **`ADR-0005`**: Input Action Asset & Stance Buffering Contract → **Accepted** (2026-09-21)
 
 ### Tier 2: Core Layer (Locomotion & Spatial Systems)
 5. **Author `ADR-0006`**: *Kinematic Player Controller, Stance FSM & Headroom SphereCast*
