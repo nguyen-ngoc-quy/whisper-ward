@@ -4,7 +4,7 @@
 > **GDD**: `design/gdd/navmesh-pathfinding.md`  
 > **Architecture Module**: `NavMeshQueryService` (`WhisperWard.Core.Navigation`)  
 > **Status**: Ready  
-> **Stories**: Not yet created — run `/create-stories navmesh-pathfinding`  
+> **Stories**: 3 stories (`story-001`, `story-002`, `story-003`) — Ready  
 
 ## Overview
 
@@ -24,6 +24,14 @@ The NavMesh / Pathfinding system (System #12) establishes Whisper Ward's authori
 | `TR-CORE-006` | Spatial corridor clearance enforcement: minimum navigable width $\ge 1.20\text{ m}$ ($\ge 1.50\text{ m}$ main patrol corridors). | `ADR-0007` ✅ |
 | `TR-CORE-007` | Off-mesh links strictly disabled (planar 2.5D surface navigation only, `generateLinks = false`). | `ADR-0007` ✅ |
 
+## Stories
+
+| # | Story | Type | Status | ADR |
+|---|-------|------|--------|-----|
+| 001 | NonAlloc Path Query Service & Polyline Distance Metric | Logic | Complete | ADR-0007 |
+| 002 | Reciprocal Velocity Avoidance & Spatial Navigation Interop | Integration | Ready | ADR-0007 |
+| 003 | Spatial Corridor Clearance & NavMesh Certification Validator | Logic | Ready | ADR-0007 |
+
 ## Definition of Done
 
 This epic is complete when:
@@ -37,4 +45,4 @@ This epic is complete when:
 
 ## Next Step
 
-Run `/create-stories navmesh-pathfinding` to break this epic into implementable stories.
+Run `/story-readiness production/epics/navmesh-pathfinding/story-001-nonalloc-query-polyline-metric.md` then `/dev-story`.
