@@ -4,7 +4,7 @@
 > **GDD**: `design/gdd/player-third-person-controller.md`  
 > **Architecture Module**: `PlayerThirdPersonController` (`WhisperWard.Core.Locomotion`)  
 > **Status**: Ready  
-> **Stories**: Not yet created — run `/create-stories player-third-person-controller`  
+> **Stories**: 3 stories (`story-001`, `story-002`, `story-003`) — Ready  
 
 ## Overview
 
@@ -28,6 +28,14 @@ The Player Third-Person Controller (System #11) implements the physical embodime
 | `TR-FEAT-016` | Enforce pure-pivot translational lock ($\Delta \vec{p} = \vec{0}$) during `HideSpot` dwell. | `ADR-0006` ✅ |
 | `TR-FEAT-017` | Standardized standoff distance ($1.20\text{ m}$) from spot entrance node upon exit. | `ADR-0006` ✅ |
 
+## Stories
+
+| # | Story | Type | Status | ADR |
+|---|-------|------|--------|-----|
+| 001 | Kinematic Locomotion & Linear Slew FSM | Logic | Complete | ADR-0006 |
+| 002 | Camera-Relative Planar Basis & Facing Orientation | Logic | Complete | ADR-0006 |
+| 003 | Feet-Anchored Capsule Scaling, Headroom Clearance Probe & HideSpot State | Logic | Complete | ADR-0006 |
+
 ## Definition of Done
 
 This epic is complete when:
@@ -40,4 +48,4 @@ This epic is complete when:
 
 ## Next Step
 
-Run `/create-stories player-third-person-controller` to break this epic into implementable stories.
+Run `/story-readiness production/epics/player-third-person-controller/story-001-kinematic-locomotion-slew.md` then `/dev-story`.

@@ -4,7 +4,7 @@
 > **GDD**: `design/gdd/camera-cinemachine.md`  
 > **Architecture Module**: `CameraRigService` (`WhisperWard.Core.Camera`)  
 > **Status**: Ready  
-> **Stories**: Not yet created — run `/create-stories camera-cinemachine`  
+> **Stories**: 3 stories (`story-001`, `story-002`, `story-003`) — Ready  
 
 ## Overview
 
@@ -24,6 +24,14 @@ The Camera system (System #20) establishes Whisper Ward's core spatial orientati
 | `TR-CORE-009` | Asymmetric occlusion recovery damping: fast push-in ($D_{\text{actual}} = \max(D_{\text{min}}, d_{\text{hit}} - R)$), smooth exponential pull-out ($\tau_{\text{recover}} = 0.25\text{ s}$). | `ADR-0008` ✅ |
 | `TR-CORE-010` | Dynamic FOV expansion during active chase ($60.0^\circ \to 68.0^\circ$ over $0.6\text{ s}$; contraction over $1.5\text{ s}$). | `ADR-0008` ✅ |
 
+## Stories
+
+| # | Story | Type | Status | ADR |
+|---|-------|------|--------|-----|
+| 001 | Third-Person Follow Rig & Planar Basis Service | Logic | Ready | ADR-0008 |
+| 002 | Spherecast Deocclusion & Exponential Recovery Damping | Logic | Ready | ADR-0008 |
+| 003 | Dynamic Chase FOV & HideSpot Viewport Blend | Integration | Ready | ADR-0008 |
+
 ## Definition of Done
 
 This epic is complete when:
@@ -38,4 +46,4 @@ This epic is complete when:
 
 ## Next Step
 
-Run `/create-stories camera-cinemachine` to break this epic into implementable stories.
+Run `/story-readiness production/epics/camera-cinemachine/story-001-follow-rig-planar-basis.md` then `/dev-story`.

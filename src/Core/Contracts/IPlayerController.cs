@@ -50,6 +50,90 @@ namespace WhisperWard.Core.Contracts
     }
 
     /// <summary>
+    /// Discrete animation state enum carrying the 8-value movement x variant pairs.
+    /// Governed by GDD #11 and AC-P24.
+    /// </summary>
+    public enum AnimState
+    {
+        IdleStanding = 0,
+        IdleCrouched = 1,
+        CrouchFwd = 2,
+        CrouchBack = 3,
+        WalkFwd = 4,
+        WalkBack = 5,
+        RunFwd = 6,
+        RunBack = 7
+    }
+
+    /// <summary>
+    /// Animation feed struct published to the view adapter each tick.
+    /// Pure value type (0 B GC).
+    /// </summary>
+    public readonly struct PlayerAnimationFeed
+    {
+        /// <summary>
+        /// Discrete animation state variant.
+        /// </summary>
+        public readonly AnimState State;
+
+        /// <summary>
+        /// Normalized speed ratio relative to active variant cruise speed [0, 1].
+        /// </summary>
+        public readonly float SpeedRatio;
+
+        /// <summary>
+        /// Continuous crouch posture blend weight [0, 1] (0 = crouched, 1 = standing).
+        /// </summary>
+        public readonly float Gamma;
+
+        public PlayerAnimationFeed(AnimState state, float speedRatio, float gamma)
+        {
+            State = state;
+            SpeedRatio = speedRatio;
+            Gamma = gamma;
+        }
+    }
+
+    /// <summary>
+    /// Immutable input packet passed to the locomotion state machine each simulation tick.
+    /// Pure value type (0 B GC).
+    /// </summary>
+    public readonly struct PlayerInputPacket
+    {
+        /// <summary>
+        /// Raw 2D input axes (X = horizontal / strafe, Y = vertical / forward).
+        /// </summary>
+        public readonly Vector2 MoveAxes;
+
+        /// <summary>
+        /// True if sprint / run button is continuously held.
+        /// </summary>
+        public readonly bool IsRunHeld;
+
+        /// <summary>
+        /// True on the rising edge tick when crouch toggle is triggered.
+        /// </summary>
+        public readonly bool CrouchToggleEdge;
+
+        /// <summary>
+        /// True if input control is severed (e.g. during capture sequence).
+        /// </summary>
+        public readonly bool IsControlSevered;
+
+        public PlayerInputPacket(
+            Vector2 moveAxes,
+            bool isRunHeld,
+            bool crouchToggleEdge,
+            bool isControlSevered = false)
+        {
+            MoveAxes = moveAxes;
+            IsRunHeld = isRunHeld;
+            CrouchToggleEdge = crouchToggleEdge;
+            IsControlSevered = isControlSevered;
+        }
+    }
+
+    /// <summary>
     /// Immutable zero-allocation state snapshot emitted by the player controller.
     /// Consumed on hot paths by Perception and Player Noise systems.
     /// </summary>
@@ -127,6 +211,21 @@ namespace WhisperWard.Core.Contracts
     }
 
     /// <summary>
+    /// Contract for stand clearance headroom probe queries.
+    /// Enables headless unit testing (H.0.13) and decoupled physics implementation.
+    /// </summary>
+    public interface IStandHeadroomProbe
+    {
+        /// <summary>
+        /// Evaluates whether overhead clearance exists for standing upright at the specified anchor.
+        /// </summary>
+        /// <param name="feetPosition">Ground-plane reference coordinates of character feet.</param>
+        /// <param name="hitCount">Outputs the number of detected blocking colliders or buffer count.</param>
+        /// <returns>True if clearance is granted (unobstructed); false if blocked.</returns>
+        bool QueryStandClearance(Vector3 feetPosition, out int hitCount);
+    }
+
+    /// <summary>
     /// Primary contract for the kinematic player locomotion controller.
     /// Governed by ADR-0006.
     /// </summary>
@@ -138,11 +237,24 @@ namespace WhisperWard.Core.Contracts
         PlayerLocomotionSnapshot CurrentSnapshot { get; }
 
         /// <summary>
+        /// Gets the current animation feed for view-layer driving without managed allocations.
+        /// </summary>
+        PlayerAnimationFeed CurrentAnimationFeed { get; }
+
+        /// <summary>
         /// Teleports the character instantaneously to a world transform, resetting velocity.
         /// </summary>
         /// <param name="worldPosition">Target world coordinates.</param>
         /// <param name="worldRotation">Target world orientation.</param>
         void Teleport(Vector3 worldPosition, Quaternion worldRotation);
+
+        /// <summary>
+        /// Authoritative respawn reset restoring standing posture, spawn facing, and clear states.
+        /// Satisfies AC-P16 and C8.
+        /// </summary>
+        /// <param name="worldPosition">Target spawn coordinates.</param>
+        /// <param name="worldRotation">Target spawn orientation.</param>
+        void Respawn(Vector3 worldPosition, Quaternion worldRotation);
 
         /// <summary>
         /// Transitions the controller into the InHideSpot containment state.
