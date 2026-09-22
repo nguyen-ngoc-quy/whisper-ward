@@ -91,18 +91,18 @@ stories:
     name: "Spatial Corridor Clearance & NavMesh Certification Validator"
     file: "production/epics/navmesh-pathfinding/story-003-corridor-clearance-certification.md"
     priority: should-have
-    status: backlog
+    status: done
     owner: "ai-programmer"
     estimate_days: 0.4
     blocker: ""
-    completed: ""
+    completed: "2026-09-22"
 
   - id: "CORE-CAM03"
     name: "Dynamic Chase FOV & HideSpot Viewport Blend"
     file: "production/epics/camera-cinemachine/story-003-chase-fov-hidespot-blend.md"
     priority: should-have
-    status: backlog
+    status: done
     owner: "unity-specialist"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-09-22"

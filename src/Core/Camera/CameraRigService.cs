@@ -23,7 +23,8 @@ namespace WhisperWard.Core.Camera
     /// angular look spike limiting (720.0 deg/s), camera-relative planar basis vectors,
     /// pause TimeScale freeze invariants, real-time spherecast deocclusion (AC-CAM-06),
     /// exponential recovery damping (AC-CAM-07), character dither opacity (AC-CAM-08),
-    /// and vertical leash hard override constraints (AC-CAM-09).
+    /// vertical leash hard override constraints (AC-CAM-09), dynamic chase FOV scaling (AC-CAM-10),
+    /// HideSpot aperture yaw cone clamping (AC-CAM-11), and capture event blend cancellation (AC-CAM-12).
     /// </summary>
     public sealed class CameraRigService : ICameraRigService
     {
@@ -41,6 +42,14 @@ namespace WhisperWard.Core.Camera
         public const float DefaultMaxAngularVelocity = 720.0f;
         public const float DefaultExplorationFov = 60.0f;
         public const float DefaultChaseFov = 68.0f;
+        public const float DefaultChaseTau = 0.18f;
+        public const float DefaultRelaxTau = 0.45f;
+        public const float DefaultBlendDuration = 0.35f;
+        public const float DefaultHideSpotYawHalfCone = 30.0f;
+        public const int DefaultOrbitPriority = 10;
+        public const int DefaultHideSpotActivePriority = 20;
+        public const int DefaultHideSpotInactivePriority = 5;
+        public const int DefaultCapturePriority = 100;
         public const float DefaultMouseSensitivity = 1.0f;
 
         private float _cameraYaw;
@@ -50,6 +59,17 @@ namespace WhisperWard.Core.Camera
         private float _ditherOpacity;
         private bool _isInHideSpotView;
         private bool _isChaseFovActive;
+        private int _orbitPriority;
+        private int _hideSpotPriority;
+        private int _capturePriority;
+        private bool _isBlendActive;
+        private float _blendProgress;
+        private bool _isCaptureCutActive;
+        private Vector3 _baseOutwardFacing;
+        private Vector3 _apertureTarget;
+        private Vector3 _captureLocation;
+        private Vector3 _guardLocation;
+
         private readonly float _minPitch;
         private readonly float _maxPitch;
         private readonly float _maxAngularVelocity;
@@ -102,14 +122,14 @@ namespace WhisperWard.Core.Camera
         public float CurrentFov => _currentFov;
 
         /// <summary>
-        /// Gets a value indicating whether the camera is actively framed inside a hide spot aperture.
-        /// </summary>
-        public bool IsInHideSpotView => _isInHideSpotView;
-
-        /// <summary>
         /// Gets a value indicating whether chase FOV expansion is currently engaged.
         /// </summary>
         public bool IsChaseFovActive => _isChaseFovActive;
+
+        /// <summary>
+        /// Gets a value indicating whether the camera is actively framed inside a hide spot aperture.
+        /// </summary>
+        public bool IsInHideSpotView => _isInHideSpotView;
 
         /// <summary>
         /// Gets the current evaluated camera distance from target in meters.
@@ -122,8 +142,63 @@ namespace WhisperWard.Core.Camera
         public float DitherOpacity => _ditherOpacity;
 
         /// <summary>
+        /// Priority of the free orbit camera (CM_FreeOrbit, nominal 10).
+        /// </summary>
+        public int OrbitPriority => _orbitPriority;
+
+        /// <summary>
+        /// Priority of the hide spot camera (CM_HideSpot, 20 when inside, 5 when in orbit).
+        /// </summary>
+        public int HideSpotPriority => _hideSpotPriority;
+
+        /// <summary>
+        /// Priority of the capture focus camera (CM_CaptureFocus, 100 on capture).
+        /// </summary>
+        public int CapturePriority => _capturePriority;
+
+        /// <summary>
+        /// Gets a value indicating whether a Cinemachine priority blend is currently actively transitioning.
+        /// </summary>
+        public bool IsBlendActive => _isBlendActive;
+
+        /// <summary>
+        /// Gets the normalized progress [0.0, 1.0] of the active blend.
+        /// </summary>
+        public float BlendProgress => _blendProgress;
+
+        /// <summary>
+        /// Gets a value indicating whether an instantaneous capture focus cut has occurred.
+        /// </summary>
+        public bool IsCaptureCutActive => _isCaptureCutActive;
+
+        /// <summary>
+        /// Gets the base outward normal direction of the current hide spot aperture.
+        /// </summary>
+        public Vector3 BaseOutwardFacing => _baseOutwardFacing;
+
+        /// <summary>
+        /// Gets the target world position of the hide spot aperture.
+        /// </summary>
+        public Vector3 ApertureTarget => _apertureTarget;
+
+        /// <summary>
+        /// Gets the recorded capture location in world space.
+        /// </summary>
+        public Vector3 CaptureLocation => _captureLocation;
+
+        /// <summary>
+        /// Gets the recorded guard location at time of capture in world space.
+        /// </summary>
+        public Vector3 GuardLocation => _guardLocation;
+
+        /// <summary>
         /// Initializes a new instance of CameraRigService.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// var cameraService = new CameraRigService(initialYaw: 0f, initialPitch: 10f);
+        /// </code>
+        /// </example>
         public CameraRigService(
             float initialYaw = 0.0f,
             float initialPitch = 10.0f,
@@ -147,6 +222,16 @@ namespace WhisperWard.Core.Camera
             _ditherOpacity = 1.0f;
             _isInHideSpotView = false;
             _isChaseFovActive = false;
+            _orbitPriority = DefaultOrbitPriority;
+            _hideSpotPriority = DefaultHideSpotInactivePriority;
+            _capturePriority = 0;
+            _isBlendActive = false;
+            _blendProgress = 0.0f;
+            _isCaptureCutActive = false;
+            _baseOutwardFacing = Vector3.forward;
+            _apertureTarget = Vector3.zero;
+            _captureLocation = Vector3.zero;
+            _guardLocation = Vector3.zero;
         }
 
         /// <summary>
@@ -160,8 +245,13 @@ namespace WhisperWard.Core.Camera
 
         /// <summary>
         /// Updates the orbit rotation from mouse look input deltas while enforcing pitch clamping.
-        /// Satisfies AC-CAM-03, AC-CAM-04, and AC-CAM-05.
+        /// Satisfies AC-CAM-03, AC-CAM-04, AC-CAM-05, and AC-CAM-11 (HideSpot yaw cone clamp).
         /// </summary>
+        /// <example>
+        /// <code>
+        /// cameraRig.UpdateLookRotation(new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")), Time.deltaTime);
+        /// </code>
+        /// </example>
         public void UpdateLookRotation(Vector2 lookDelta, float deltaTime)
         {
             float timeScale = _timeScaleProvider != null ? _timeScaleProvider() : Time.timeScale;
@@ -184,21 +274,54 @@ namespace WhisperWard.Core.Camera
             _cameraYaw = (_cameraYaw + appliedYawDelta) % 360f;
             if (_cameraYaw < 0f) _cameraYaw += 360f;
 
+            // AC-CAM-11: In HideSpot view, clamp camera yaw to +/- 30 deg cone facing outward
+            if (_isInHideSpotView)
+            {
+                float baseYaw = Mathf.Atan2(_baseOutwardFacing.x, _baseOutwardFacing.z) * Mathf.Rad2Deg;
+                baseYaw = (baseYaw % 360f + 360f) % 360f;
+
+                float deltaAngle = Mathf.DeltaAngle(baseYaw, _cameraYaw);
+                float clampedDelta = Mathf.Clamp(deltaAngle, -DefaultHideSpotYawHalfCone, DefaultHideSpotYawHalfCone);
+
+                _cameraYaw = (baseYaw + clampedDelta) % 360f;
+                if (_cameraYaw < 0f) _cameraYaw += 360f;
+            }
+
             // Update Pitch clamped to [-35.0 deg, +65.0 deg] (AC-CAM-03)
             _cameraPitch = Mathf.Clamp(_cameraPitch - appliedPitchDelta, _minPitch, _maxPitch);
         }
 
         /// <summary>
         /// Sets the yaw angle directly, wrapping to [0, 360).
+        /// In HideSpot view, strictly clamps to +/- 30 deg cone around aperture outward normal.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// cameraRig.SetYaw(45.0f);
+        /// </code>
+        /// </example>
         public void SetYaw(float yawDegrees)
         {
             _cameraYaw = (yawDegrees % 360f + 360f) % 360f;
+            if (_isInHideSpotView)
+            {
+                float baseYaw = Mathf.Atan2(_baseOutwardFacing.x, _baseOutwardFacing.z) * Mathf.Rad2Deg;
+                baseYaw = (baseYaw % 360f + 360f) % 360f;
+                float deltaAngle = Mathf.DeltaAngle(baseYaw, _cameraYaw);
+                float clampedDelta = Mathf.Clamp(deltaAngle, -DefaultHideSpotYawHalfCone, DefaultHideSpotYawHalfCone);
+                _cameraYaw = (baseYaw + clampedDelta) % 360f;
+                if (_cameraYaw < 0f) _cameraYaw += 360f;
+            }
         }
 
         /// <summary>
         /// Sets the pitch angle directly, clamping to valid range.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// cameraRig.SetPitch(15.0f);
+        /// </code>
+        /// </example>
         public void SetPitch(float pitchDegrees)
         {
             _cameraPitch = Mathf.Clamp(pitchDegrees, _minPitch, _maxPitch);
@@ -210,6 +333,11 @@ namespace WhisperWard.Core.Camera
         /// Satisfies AC-CAM-06 (instant collapse) and AC-CAM-07 (exponential recovery).
         /// Zero managed allocations (0 B GC).
         /// </summary>
+        /// <example>
+        /// <code>
+        /// float distance = cameraRig.EvaluateCameraDistance(chestPos, camDir, curDist, Time.deltaTime);
+        /// </code>
+        /// </example>
         public float EvaluateCameraDistance(Vector3 targetPosition, Vector3 cameraDirection, float currentDistance, float deltaTime)
         {
             float targetDistance = DefaultNominalDistance;
@@ -276,6 +404,11 @@ namespace WhisperWard.Core.Camera
         /// Calculates character dither opacity based on actual camera distance.
         /// Satisfies AC-CAM-08: Opacity_dither = clamp((D_actual - 0.40) / 0.20, 0.15, 1.0).
         /// </summary>
+        /// <example>
+        /// <code>
+        /// float opacity = cameraRig.CalculateDitherOpacity(distance);
+        /// </code>
+        /// </example>
         public float CalculateDitherOpacity(float actualDistance)
         {
             if (actualDistance > DefaultDitherThreshold)
@@ -292,6 +425,11 @@ namespace WhisperWard.Core.Camera
         /// Applies the vertical leash override constraint on rapid descent.
         /// Satisfies AC-CAM-09.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// Vector3 clampedPos = cameraRig.ApplyVerticalLeash(camPos, playerPos, 2.50f);
+        /// </code>
+        /// </example>
         public Vector3 ApplyVerticalLeash(Vector3 cameraPosition, Vector3 targetPosition, float maxVerticalLeash = DefaultMaxVerticalLeash)
         {
             return EnforceVerticalLeash(cameraPosition, targetPosition, maxVerticalLeash);
@@ -301,6 +439,11 @@ namespace WhisperWard.Core.Camera
         /// Static utility to enforce vertical leash constraint.
         /// Satisfies AC-CAM-09: snaps vertical displacement to leash limit when delta exceeds threshold.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// Vector3 clamped = CameraRigService.EnforceVerticalLeash(camPos, targetPos);
+        /// </code>
+        /// </example>
         public static Vector3 EnforceVerticalLeash(Vector3 cameraPosition, Vector3 targetPosition, float maxVerticalLeash = DefaultMaxVerticalLeash)
         {
             float verticalDelta = cameraPosition.y - targetPosition.y;
@@ -319,6 +462,11 @@ namespace WhisperWard.Core.Camera
         /// Computes camera-relative planar basis from a 3D forward and up vector with pitch degeneracy fallback.
         /// Satisfies ADR-0008 Section 7.2.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// CameraRigService.CalculatePlanarBasisFromTransform(cam.forward, cam.up, out var fwd, out var right);
+        /// </code>
+        /// </example>
         public static void CalculatePlanarBasisFromTransform(
             Vector3 cameraForward,
             Vector3 cameraUp,
@@ -342,6 +490,11 @@ namespace WhisperWard.Core.Camera
         /// Calculates the normalized movement direction on the XZ plane from camera-relative basis vectors.
         /// Satisfies AC-CAM-01: prevents sqrt(2) diagonal speed glitch.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// Vector3 move = CameraRigService.CalculateNormalizedMovement(wasd, planarFwd, planarRight);
+        /// </code>
+        /// </example>
         public static Vector3 CalculateNormalizedMovement(Vector2 inputAxes, Vector3 planarForward, Vector3 planarRight)
         {
             if (inputAxes.sqrMagnitude < 1e-8f)
@@ -355,28 +508,190 @@ namespace WhisperWard.Core.Camera
         }
 
         /// <summary>
-        /// Modulates the camera field of view between exploration (60 deg) and pursuit tension (68 deg).
+        /// Sets whether pursuit tension is active, selecting target FOV (68 deg chase vs 60 deg exploration).
+        /// Satisfies AC-CAM-10.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// cameraRig.SetChaseFovActive(true);
+        /// </code>
+        /// </example>
         public void SetChaseFovActive(bool isChaseActive)
         {
             _isChaseFovActive = isChaseActive;
-            _currentFov = isChaseActive ? DefaultChaseFov : DefaultExplorationFov;
+        }
+
+        /// <summary>
+        /// Updates dynamic field of view interpolation based on chase state and elapsed frame time.
+        /// Smoothly expands from 60 deg to 68 deg with tau = 0.18s during chase.
+        /// Smoothly contracts back to 60 deg with tau = 0.45s upon evasion.
+        /// Satisfies AC-CAM-10.
+        /// </summary>
+        /// <param name="deltaTime">Elapsed frame time in seconds.</param>
+        /// <returns>Evaluated field of view in degrees.</returns>
+        /// <example>
+        /// <code>
+        /// float fov = cameraRig.UpdateFov(Time.deltaTime);
+        /// </code>
+        /// </example>
+        public float UpdateFov(float deltaTime)
+        {
+            _currentFov = EvaluateFov(_currentFov, _isChaseFovActive, deltaTime);
+            return _currentFov;
+        }
+
+        /// <summary>
+        /// Evaluates dynamic FOV scaling with exponential smoothing.
+        /// Satisfies AC-CAM-10.
+        /// </summary>
+        /// <param name="currentFov">Starting FOV in degrees.</param>
+        /// <param name="isChaseActive">Whether chase tension is active.</param>
+        /// <param name="deltaTime">Elapsed frame time in seconds.</param>
+        /// <returns>Interpolated FOV in degrees.</returns>
+        /// <example>
+        /// <code>
+        /// float fov = CameraRigService.EvaluateFov(60.0f, true, 0.54f);
+        /// </code>
+        /// </example>
+        public static float EvaluateFov(float currentFov, bool isChaseActive, float deltaTime)
+        {
+            float targetFov = isChaseActive ? DefaultChaseFov : DefaultExplorationFov;
+            float tau = isChaseActive ? DefaultChaseTau : DefaultRelaxTau;
+            if (deltaTime <= 0f)
+            {
+                return currentFov;
+            }
+            float alpha = 1.0f - Mathf.Exp(-deltaTime / tau);
+            return currentFov + (targetFov - currentFov) * alpha;
         }
 
         /// <summary>
         /// Transitions the camera blend to the constrained interior peep-hole virtual camera.
+        /// Elevates CM_HideSpot priority to 20, aligns yaw with portal outward normal, and initiates 0.35s EaseInOut blend.
+        /// Satisfies AC-CAM-11.
         /// </summary>
+        /// <param name="apertureTarget">Position of the hide spot viewing portal.</param>
+        /// <param name="outwardFacing">Outward normal direction through the doorway.</param>
+        /// <example>
+        /// <code>
+        /// cameraRig.SwitchToHideSpotView(spot.AperturePosition, spot.OutwardNormal);
+        /// </code>
+        /// </example>
         public void SwitchToHideSpotView(Vector3 apertureTarget, Vector3 outwardFacing)
         {
             _isInHideSpotView = true;
+            _apertureTarget = apertureTarget;
+            _baseOutwardFacing = outwardFacing.sqrMagnitude > 1e-8f ? outwardFacing.normalized : Vector3.forward;
+            _hideSpotPriority = DefaultHideSpotActivePriority;
+            _isBlendActive = true;
+            _blendProgress = 0.0f;
+
+            // Align camera yaw to the outward facing vector
+            float baseYaw = Mathf.Atan2(_baseOutwardFacing.x, _baseOutwardFacing.z) * Mathf.Rad2Deg;
+            _cameraYaw = (baseYaw % 360f + 360f) % 360f;
         }
 
         /// <summary>
         /// Transitions the camera blend back to the primary free orbital follow virtual camera.
+        /// Resets CM_HideSpot priority to 5, initiates 0.35s return blend, and restores 360 deg orbit.
         /// </summary>
+        /// <example>
+        /// <code>
+        /// cameraRig.SwitchToOrbitView();
+        /// </code>
+        /// </example>
         public void SwitchToOrbitView()
         {
             _isInHideSpotView = false;
+            _hideSpotPriority = DefaultHideSpotInactivePriority;
+            _isBlendActive = true;
+            _blendProgress = 0.0f;
+        }
+
+        /// <summary>
+        /// Updates virtual camera blend progress over frame time.
+        /// </summary>
+        /// <param name="deltaTime">Elapsed frame time in seconds.</param>
+        /// <example>
+        /// <code>
+        /// cameraRig.UpdateBlend(Time.deltaTime);
+        /// </code>
+        /// </example>
+        public void UpdateBlend(float deltaTime)
+        {
+            if (!_isBlendActive || deltaTime <= 0f)
+            {
+                return;
+            }
+
+            _blendProgress = Mathf.Clamp01(_blendProgress + (deltaTime / DefaultBlendDuration));
+            if (_blendProgress >= 1.0f)
+            {
+                _isBlendActive = false;
+            }
+        }
+
+        /// <summary>
+        /// Aborts and resets any active virtual camera blend immediately (0 ms cut).
+        /// Satisfies AC-CAM-12.
+        /// </summary>
+        /// <example>
+        /// <code>
+        /// cameraRig.CancelActiveBlend();
+        /// </code>
+        /// </example>
+        public void CancelActiveBlend()
+        {
+            _isBlendActive = false;
+            _blendProgress = 0.0f;
+        }
+
+        /// <summary>
+        /// Handles guard capture event, immediately aborting active blends and prioritizing capture camera (Priority 100).
+        /// Satisfies AC-CAM-12.
+        /// </summary>
+        /// <param name="evt">Capture event carrying player and guard locations.</param>
+        /// <example>
+        /// <code>
+        /// cameraRig.OnPlayerCaptured(new PlayerCapturedEvent(playerPos, guardPos));
+        /// </code>
+        /// </example>
+        public void OnPlayerCaptured(PlayerCapturedEvent evt)
+        {
+            // AC-CAM-12: Abort active blend immediately
+            CancelActiveBlend();
+
+            _capturePriority = DefaultCapturePriority;
+            _isCaptureCutActive = true;
+            _captureLocation = evt.CaptureLocation;
+            _guardLocation = evt.GuardLocation;
+
+            // Orient camera directly toward capturing guard
+            Vector3 lookDir = evt.GuardLocation - evt.CaptureLocation;
+            if (lookDir.sqrMagnitude > 1e-8f)
+            {
+                lookDir.Normalize();
+                float targetYaw = Mathf.Atan2(lookDir.x, lookDir.z) * Mathf.Rad2Deg;
+                _cameraYaw = (targetYaw % 360f + 360f) % 360f;
+
+                float planarDist = Mathf.Sqrt(lookDir.x * lookDir.x + lookDir.z * lookDir.z);
+                float targetPitch = -Mathf.Atan2(lookDir.y, planarDist) * Mathf.Rad2Deg;
+                _cameraPitch = Mathf.Clamp(targetPitch, _minPitch, _maxPitch);
+            }
+        }
+
+        /// <summary>
+        /// Resets the capture focus cut override, returning camera control to normal priorities.
+        /// </summary>
+        /// <example>
+        /// <code>
+        /// cameraRig.ResetCaptureCut();
+        /// </code>
+        /// </example>
+        public void ResetCaptureCut()
+        {
+            _isCaptureCutActive = false;
+            _capturePriority = 0;
         }
     }
 }

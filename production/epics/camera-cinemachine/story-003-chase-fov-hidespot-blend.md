@@ -1,12 +1,12 @@
 # Story 003: Dynamic Chase FOV & HideSpot Viewport Blend
 
 > **Epic**: Camera (Cinemachine Rig)
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Core
 > **Type**: Integration
 > **Estimate**: 4h
 > **Manifest Version**: 2026-09-21
-> **Last Updated**: 2026-09-21
+> **Last Updated**: 2026-09-22
 
 ## Context
 
@@ -33,10 +33,10 @@
 
 *From GDD `design/gdd/camera-cinemachine.md` and `design/gdd/player-movement-hide.md`, scoped to this story:*
 
-- [ ] **AC-CAM-10 / AC6 — Dynamic Chase FOV Scaling & Smoothing**: When pursuit begins, FOV expands from $60.0^\circ \to 68.0^\circ$ with $\tau_{\text{fov}} = 0.18\text{ s}$ (reaching $\ge 67.6^\circ$ within $0.54\text{ s}$). When pursuit ends, FOV contracts back to $60.0^\circ$ with $\tau_{\text{fov}} = 0.45\text{ s}$ (reaching $\le 60.4^\circ$ within $1.35\text{ s}$).
-- [ ] **AC-CAM-11 / AC7 — HideSpot Viewport Blend & Aperture Constraint**: On `SwitchToHideSpotView`, `CM_HideSpot` priority elevates to 20, triggering $0.35\text{ s}$ `EaseInOut` blend to aperture portal target ($h_{\text{portal}} = \min(0.8\text{ m}, \text{aperture\_height}/2)$), and player look is constrained to a $\pm 30^\circ$ yaw cone facing outward.
-- [ ] **AC-CAM-12 / AC7 — Capture Event Blend Cancellation & Instant Cut**: If `PlayerCapturedEvent` fires during a transition into/out of a HideSpot, any active blend is aborted (`CancelActiveBlend`), and camera cuts instantly ($0\text{ ms}$) to `CaptureFocus` looking at the capturing guard.
-- [ ] **AC-CAM-13 / AC12 — WebGL Performance and CPU Budget Verification**: CPU execution time across `CinemachineBrain`, deocclusion, and FOV interpolation does not exceed $1.0\text{ ms}$/frame ($0.30\text{ ms}$ typical), and allocations remain 0 B GC.
+- [x] **AC-CAM-10 / AC6 — Dynamic Chase FOV Scaling & Smoothing**: When pursuit begins, FOV expands from $60.0^\circ \to 68.0^\circ$ with $\tau_{\text{fov}} = 0.18\text{ s}$ (reaching $\ge 67.6^\circ$ within $0.54\text{ s}$). When pursuit ends, FOV contracts back to $60.0^\circ$ with $\tau_{\text{fov}} = 0.45\text{ s}$ (reaching $\le 60.4^\circ$ within $1.35\text{ s}$).
+- [x] **AC-CAM-11 / AC7 — HideSpot Viewport Blend & Aperture Constraint**: On `SwitchToHideSpotView`, `CM_HideSpot` priority elevates to 20, triggering $0.35\text{ s}$ `EaseInOut` blend to aperture portal target ($h_{\text{portal}} = \min(0.8\text{ m}, \text{aperture\_height}/2)$), and player look is constrained to a $\pm 30^\circ$ yaw cone facing outward.
+- [x] **AC-CAM-12 / AC7 — Capture Event Blend Cancellation & Instant Cut**: If `PlayerCapturedEvent` fires during a transition into/out of a HideSpot, any active blend is aborted (`CancelActiveBlend`), and camera cuts instantly ($0\text{ ms}$) to `CaptureFocus` looking at the capturing guard.
+- [x] **AC-CAM-13 / AC12 — WebGL Performance and CPU Budget Verification**: CPU execution time across `CinemachineBrain`, deocclusion, and FOV interpolation does not exceed $1.0\text{ ms}$/frame ($0.30\text{ ms}$ typical), and allocations remain 0 B GC.
 
 ---
 
@@ -134,11 +134,22 @@
 **Required evidence**:
 - Integration: `tests/integration/camera/camera_blend_integration_test.cs` — must exist and pass
 
-**Status**: [ ] Not yet created
+**Status**: [x] Verified
+- Automated integration test suite: `tests/integration/camera/camera_blend_integration_test.cs` (6 tests, 100% passing).
+- Validates dynamic chase FOV scaling and exponential smoothing (AC-CAM-10), HideSpot viewport blend and aperture yaw cone clamp (AC-CAM-11), capture event blend cancellation and instant cut (AC-CAM-12), and WebGL 0 B GC allocation and frame timing budget (AC-CAM-13).
 
 ---
 
 ## Dependencies
 
 - Depends on: Story 002 (`story-002-spherecast-deocclusion-damping.md`)
-- Unlocks: Sprint 1 Core Implementation
+- Unlocks: Sprint 1 Core Implementation Completion & Sprint QA Close-Out
+
+---
+
+## Completion Notes
+**Completed**: 2026-09-22
+**Criteria**: 4/4 passing
+**Deviations**: None
+**Test Evidence**: Integration: test suite at `tests/integration/camera/camera_blend_integration_test.cs` (6 integration tests)
+**Code Review**: Complete (Approved)
