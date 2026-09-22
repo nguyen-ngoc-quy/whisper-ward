@@ -30,7 +30,7 @@ The NavMesh / Pathfinding system (System #12) establishes Whisper Ward's authori
 |---|-------|------|--------|-----|
 | 001 | NonAlloc Path Query Service & Polyline Distance Metric | Logic | Complete | ADR-0007 |
 | 002 | Reciprocal Velocity Avoidance & Spatial Navigation Interop | Integration | Complete | ADR-0007 |
-| 003 | Spatial Corridor Clearance & NavMesh Certification Validator | Logic | Ready | ADR-0007 |
+| 003 | Spatial Corridor Clearance & NavMesh Certification Validator | Logic | Complete | ADR-0007 |
 
 ## Definition of Done
 

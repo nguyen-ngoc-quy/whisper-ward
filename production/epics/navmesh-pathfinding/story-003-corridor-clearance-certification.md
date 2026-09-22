@@ -1,12 +1,12 @@
 # Story 003: Spatial Corridor Clearance & NavMesh Certification Validator
 
 > **Epic**: NavMesh / Pathfinding
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Core
 > **Type**: Logic
 > **Estimate**: 3h
 > **Manifest Version**: 2026-09-21
-> **Last Updated**: 2026-09-21
+> **Last Updated**: 2026-09-22
 
 ## Context
 
@@ -34,11 +34,11 @@
 
 *From GDD `design/gdd/navmesh-pathfinding.md`, scoped to this story:*
 
-- [ ] **AC-NAV-08 / AC-NAV-18 — Automated Corridor Clearance Certification**: Level geometry scanner sweeps all traversable NavMesh surfaces and measures clearance width between static `World` colliders. Sections with clear width $< 1.20\text{ m}$ fail validation with error code `ERR_CORRIDOR_CHOKE_POINT`.
-- [ ] **AC-NAV-19 — Zero Off-Mesh Links Verification Gate**: Validator inspects `NavMeshData` assets and confirms `navMeshData.GetOffMeshLinks().Length == 0` and `surface.generateLinks == false`. Any links present trigger build rejection.
-- [ ] **AC-NAV-20 — Physics Bake Layer Mask Exclusion Invariant**: Build validation verifies that `NavMeshSurface.layerMask` contains static structural layers (`World`, `Default`) and strictly excludes dynamic layers (`Player`, `Guard`, `HideSpot`, `Trigger`).
-- [ ] **AC-NAV-07 — NavMesh Voxel Resolution Invariant**: Bake configuration validator asserts $v_{\text{size}} \le r_{\text{guard}} / 3 = 0.1333\text{ m}$. Configs with $v_{\text{size}} = 0.100\text{ m}$ pass; configs $> 0.1333\text{ m}$ fail with `ERR_BAKE_VOXEL_TOO_COARSE`.
-- [ ] **AC-NAV-21 — Maximum Slope and Step Height Ceilings**: Validator asserts `agentMaxSlope <= 45.0f` and `agentClimb <= 0.30f` across all level bake settings.
+- [x] **AC-NAV-08 / AC-NAV-18 — Automated Corridor Clearance Certification**: Level geometry scanner sweeps all traversable NavMesh surfaces and measures clearance width between static `World` colliders. Sections with clear width $< 1.20\text{ m}$ fail validation with error code `ERR_CORRIDOR_CHOKE_POINT`.
+- [x] **AC-NAV-19 — Zero Off-Mesh Links Verification Gate**: Validator inspects `NavMeshData` assets and confirms `navMeshData.GetOffMeshLinks().Length == 0` and `surface.generateLinks == false`. Any links present trigger build rejection.
+- [x] **AC-NAV-20 — Physics Bake Layer Mask Exclusion Invariant**: Build validation verifies that `NavMeshSurface.layerMask` contains static structural layers (`World`, `Default`) and strictly excludes dynamic layers (`Player`, `Guard`, `HideSpot`, `Trigger`).
+- [x] **AC-NAV-07 — NavMesh Voxel Resolution Invariant**: Bake configuration validator asserts $v_{\text{size}} \le r_{\text{guard}} / 3 = 0.1333\text{ m}$. Configs with $v_{\text{size}} = 0.100\text{ m}$ pass; configs $> 0.1333\text{ m}$ fail with `ERR_BAKE_VOXEL_TOO_COARSE`.
+- [x] **AC-NAV-21 — Maximum Slope and Step Height Ceilings**: Validator asserts `agentMaxSlope <= 45.0f` and `agentClimb <= 0.30f` across all level bake settings.
 
 ---
 
@@ -115,7 +115,9 @@
 **Required evidence**:
 - Logic: `tests/unit/navigation/navmesh_certification_test.cs` — must exist and pass
 
-**Status**: [ ] Not yet created
+**Status**: [x] Verified
+- Automated unit test suite: `tests/unit/navigation/navmesh_certification_test.cs` (8 tests, 100% passing).
+- Validates automated corridor clearance enforcement (AC-NAV-08, AC-NAV-18), zero off-mesh links verification gate (AC-NAV-19), physics bake layer mask exclusion invariant (AC-NAV-20), voxel resolution invariant (AC-NAV-07), and maximum slope and step height ceilings (AC-NAV-21).
 
 ---
 
@@ -123,3 +125,12 @@
 
 - Depends on: Story 002 (`story-002-rvo-avoidance-navigation-interop.md`)
 - Unlocks: Sprint 1 Navigation Implementation
+
+---
+
+## Completion Notes
+**Completed**: 2026-09-22
+**Criteria**: 5/5 passing
+**Deviations**: None
+**Test Evidence**: Logic: test suite at `tests/unit/navigation/navmesh_certification_test.cs` (8 unit tests)
+**Code Review**: Complete (Approved)
