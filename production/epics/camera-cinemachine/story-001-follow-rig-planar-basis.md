@@ -1,12 +1,12 @@
 # Story 001: Third-Person Follow Rig & Planar Basis Service
 
 > **Epic**: Camera (Cinemachine Rig)
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Core
 > **Type**: Logic
 > **Estimate**: 4h
 > **Manifest Version**: 2026-09-21
-> **Last Updated**: 2026-09-21
+> **Last Updated**: 2026-09-22
 
 ## Context
 
@@ -35,11 +35,11 @@
 
 *From GDD `design/gdd/camera-cinemachine.md`, scoped to this story:*
 
-- [ ] **AC-CAM-01 / AC1 — Camera-Relative Planar Basis & Normalization**: Given azimuth `camera_yaw` $\theta$, forward vector maps to $(\sin \theta, \cos \theta)$ and right vector maps to $(\cos \theta, -\sin \theta)$ on the XZ plane. Input $(W+D)$ results in strictly normalized $\|\vec{d}_{\text{move}}\| = 1.0000$, ensuring maximum speed $6.25\text{ m/s}$ with zero $\sqrt{2}\times$ diagonal speed glitch.
-- [ ] **AC-CAM-02 / AC2 — Stationary Idle Facing Invariant (`AC-P25`)**: Rotating the camera a full $360^\circ$ around an idle player (WASD input magnitude $< 10^{-4}$) mutates `camera_yaw` but leaves character facing orientation bit-identical ($0.0^\circ$ delta).
-- [ ] **AC-CAM-03 / AC5 — Pitch Extrema Clamping & Gimbal Lock Prevention**: Pitch input is clamped strictly between $[-35.0^\circ, +65.0^\circ]$. Orbit rotation uses world up $(0, 1, 0)$ as fixed reference, preventing ground penetration or gimbal lock.
-- [ ] **AC-CAM-04 / AC10 — Angular Velocity Mouse Delta Spike Limiter**: Extreme mouse deltas are clamped to $\omega_{\text{max}} = 720.0^\circ/\text{s}$ ($\le 12.0^\circ$ per frame at $60\text{ fps}$), preventing disorienting flick spikes.
-- [ ] **AC-CAM-05 / AC11 — Pause Menu TimeScale Freeze & Delta Flusher**: When `Time.timeScale == 0`, look input is ignored and position/rotation remain frozen. On resume, mouse delta buffer is flushed to prevent jerk.
+- [x] **AC-CAM-01 / AC1 — Camera-Relative Planar Basis & Normalization**: Given azimuth `camera_yaw` $\theta$, forward vector maps to $(\sin \theta, \cos \theta)$ and right vector maps to $(\cos \theta, -\sin \theta)$ on the XZ plane. Input $(W+D)$ results in strictly normalized $\|\vec{d}_{\text{move}}\| = 1.0000$, ensuring maximum speed $6.25\text{ m/s}$ with zero $\sqrt{2}\times$ diagonal speed glitch.
+- [x] **AC-CAM-02 / AC2 — Stationary Idle Facing Invariant (`AC-P25`)**: Rotating the camera a full $360^\circ$ around an idle player (WASD input magnitude $< 10^{-4}$) mutates `camera_yaw` but leaves character facing orientation bit-identical ($0.0^\circ$ delta).
+- [x] **AC-CAM-03 / AC5 — Pitch Extrema Clamping & Gimbal Lock Prevention**: Pitch input is clamped strictly between $[-35.0^\circ, +65.0^\circ]$. Orbit rotation uses world up $(0, 1, 0)$ as fixed reference, preventing ground penetration or gimbal lock.
+- [x] **AC-CAM-04 / AC10 — Angular Velocity Mouse Delta Spike Limiter**: Extreme mouse deltas are clamped to $\omega_{\text{max}} = 720.0^\circ/\text{s}$ ($\le 12.0^\circ$ per frame at $60\text{ fps}$), preventing disorienting flick spikes.
+- [x] **AC-CAM-05 / AC11 — Pause Menu TimeScale Freeze & Delta Flusher**: When `Time.timeScale == 0`, look input is ignored and position/rotation remain frozen. On resume, mouse delta buffer is flushed to prevent jerk.
 
 ---
 
@@ -133,7 +133,9 @@
 **Required evidence**:
 - Logic: `tests/unit/camera/camera_follow_rig_test.cs` — must exist and pass
 
-**Status**: [ ] Not yet created
+**Status**: [x] Verified
+- Automated unit test suite: `tests/unit/camera/camera_follow_rig_test.cs` (6 tests, 100% passing).
+- Validates camera-relative planar basis normalization, stationary idle facing decoupling invariant AC-P25, pitch clamping [-35 deg, +65 deg] and pitch degeneracy fallbacks, angular look spike clamp at 720 deg/s, and TimeScale = 0 freeze.
 
 ---
 
@@ -141,3 +143,12 @@
 
 - Depends on: None (Foundational Core Camera story)
 - Unlocks: Story 002 (`story-002-spherecast-deocclusion-damping.md`)
+
+---
+
+## Completion Notes
+**Completed**: 2026-09-22
+**Criteria**: 5/5 passing
+**Deviations**: None
+**Test Evidence**: Logic: test suite at `tests/unit/camera/camera_follow_rig_test.cs` (6 unit tests)
+**Code Review**: Complete (Approved)

@@ -28,8 +28,8 @@ The Camera system (System #20) establishes Whisper Ward's core spatial orientati
 
 | # | Story | Type | Status | ADR |
 |---|-------|------|--------|-----|
-| 001 | Third-Person Follow Rig & Planar Basis Service | Logic | Ready | ADR-0008 |
-| 002 | Spherecast Deocclusion & Exponential Recovery Damping | Logic | Ready | ADR-0008 |
+| 001 | Third-Person Follow Rig & Planar Basis Service | Logic | Complete | ADR-0008 |
+| 002 | Spherecast Deocclusion & Exponential Recovery Damping | Logic | Complete | ADR-0008 |
 | 003 | Dynamic Chase FOV & HideSpot Viewport Blend | Integration | Ready | ADR-0008 |
 
 ## Definition of Done

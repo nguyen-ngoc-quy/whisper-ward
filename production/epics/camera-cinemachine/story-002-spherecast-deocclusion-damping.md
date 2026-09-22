@@ -1,12 +1,12 @@
 # Story 002: Spherecast Deocclusion & Exponential Recovery Damping
 
 > **Epic**: Camera (Cinemachine Rig)
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Core
 > **Type**: Logic
 > **Estimate**: 4h
 > **Manifest Version**: 2026-09-21
-> **Last Updated**: 2026-09-21
+> **Last Updated**: 2026-09-22
 
 ## Context
 
@@ -33,10 +33,10 @@
 
 *From GDD `design/gdd/camera-cinemachine.md`, scoped to this story:*
 
-- [ ] **AC-CAM-06 / AC3 — Instantaneous Deocclusion Collapse**: When a static E20 obstacle on `World` layer blocks the line of sight at distance $d_{\text{hit}} < D_{\text{nom}} + R_{\text{cam\_col}}$, camera distance instantly collapses to $D_{\text{actual}} = \max(D_{\text{min}}, d_{\text{hit}} - R_{\text{cam\_col}})$ within $0\text{ ms}$ (same frame).
-- [ ] **AC-CAM-07 / AC4 — Exponential Distance Recovery Damping**: When occlusion clears ($D_{\text{target}} > D(t)$), distance recovers according to $D(t + \Delta t) = D(t) + (D_{\text{target}} - D(t)) \cdot (1 - e^{-\Delta t / \tau_{\text{recover}}})$ with $\tau_{\text{recover}} = 0.25\text{ s}$, reaching $\ge 95\%$ nominal distance after $0.75\text{ s}$ without frame stutter.
-- [ ] **AC-CAM-08 / AC8 — Dither Transparency Signal on Tight Crevice**: When camera distance is compressed to $D_{\text{actual}} \le 0.60\text{ m}$, the rig calculates and exposes normalized dither opacity $\text{Opacity}_{\text{dither}} = \text{clamp}((D_{\text{actual}} - 0.40) / 0.20, 0.15, 1.0)$ to prevent character geometry from obstructing the view.
-- [ ] **AC-CAM-09 / AC9 — Vertical Leash Hard Override on Rapid Descent**: When player vertical displacement relative to camera exceeds leash threshold $\Delta Y_{\text{leash}} = 2.50\text{ m}$ ($V_y < -8.0\text{ m/s}$), vertical position damping is bypassed and camera altitude snaps directly to maintain framing.
+- [x] **AC-CAM-06 / AC3 — Instantaneous Deocclusion Collapse**: When a static E20 obstacle on `World` layer blocks the line of sight at distance $d_{\text{hit}} < D_{\text{nom}} + R_{\text{cam\_col}}$, camera distance instantly collapses to $D_{\text{actual}} = \max(D_{\text{min}}, d_{\text{hit}} - R_{\text{cam\_col}})$ within $0\text{ ms}$ (same frame).
+- [x] **AC-CAM-07 / AC4 — Exponential Distance Recovery Damping**: When occlusion clears ($D_{\text{target}} > D(t)$), distance recovers according to $D(t + \Delta t) = D(t) + (D_{\text{target}} - D(t)) \cdot (1 - e^{-\Delta t / \tau_{\text{recover}}})$ with $\tau_{\text{recover}} = 0.25\text{ s}$, reaching $\ge 95\%$ nominal distance after $0.75\text{ s}$ without frame stutter.
+- [x] **AC-CAM-08 / AC8 — Dither Transparency Signal on Tight Crevice**: When camera distance is compressed to $D_{\text{actual}} \le 0.60\text{ m}$, the rig calculates and exposes normalized dither opacity $\text{Opacity}_{\text{dither}} = \text{clamp}((D_{\text{actual}} - 0.40) / 0.20, 0.15, 1.0)$ to prevent character geometry from obstructing the view.
+- [x] **AC-CAM-09 / AC9 — Vertical Leash Hard Override on Rapid Descent**: When player vertical displacement relative to camera exceeds leash threshold $\Delta Y_{\text{leash}} = 2.50\text{ m}$ ($V_y < -8.0\text{ m/s}$), vertical position damping is bypassed and camera altitude snaps directly to maintain framing.
 
 ---
 
@@ -142,7 +142,9 @@
 **Required evidence**:
 - Logic: `tests/unit/camera/camera_deocclusion_test.cs` — must exist and pass
 
-**Status**: [ ] Not yet created
+**Status**: [x] Verified
+- Automated unit test suite: `tests/unit/camera/camera_deocclusion_test.cs` (7 tests, 100% passing).
+- Validates instantaneous deocclusion collapse on collision (AC-CAM-06), exponential recovery damping (AC-CAM-07), character dither opacity curve (AC-CAM-08), and vertical leash hard override constraint (AC-CAM-09).
 
 ---
 
@@ -150,3 +152,12 @@
 
 - Depends on: Story 001 (`story-001-follow-rig-planar-basis.md`)
 - Unlocks: Story 003 (`story-003-chase-fov-hidespot-blend.md`)
+
+---
+
+## Completion Notes
+**Completed**: 2026-09-22
+**Criteria**: 4/4 passing
+**Deviations**: None
+**Test Evidence**: Logic: test suite at `tests/unit/camera/camera_deocclusion_test.cs` (7 unit tests)
+**Code Review**: Complete (Approved)

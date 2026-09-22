@@ -61,31 +61,31 @@ stories:
     name: "Reciprocal Velocity Avoidance & Spatial Navigation Interop"
     file: "production/epics/navmesh-pathfinding/story-002-rvo-avoidance-navigation-interop.md"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "ai-programmer"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-09-22"
 
   - id: "CORE-CAM01"
     name: "Third-Person Follow Rig & Planar Basis Service"
     file: "production/epics/camera-cinemachine/story-001-follow-rig-planar-basis.md"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "unity-specialist"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-09-22"
 
   - id: "CORE-CAM02"
     name: "Spherecast Deocclusion & Exponential Recovery Damping"
     file: "production/epics/camera-cinemachine/story-002-spherecast-deocclusion-damping.md"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "unity-specialist"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-09-22"
 
   - id: "CORE-NAV03"
     name: "Spatial Corridor Clearance & NavMesh Certification Validator"
