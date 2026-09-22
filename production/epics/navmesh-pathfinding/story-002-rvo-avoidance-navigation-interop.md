@@ -1,12 +1,12 @@
 # Story 002: Reciprocal Velocity Avoidance & Spatial Navigation Interop
 
 > **Epic**: NavMesh / Pathfinding
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: Core
 > **Type**: Integration
 > **Estimate**: 4h
 > **Manifest Version**: 2026-09-21
-> **Last Updated**: 2026-09-21
+> **Last Updated**: 2026-09-22
 
 ## Context
 
@@ -34,11 +34,11 @@
 
 *From GDD `design/gdd/navmesh-pathfinding.md` and `design/gdd/player-movement-hide.md`, scoped to this story:*
 
-- [ ] **AC-NAV-12 — RVO Head-On Avoidance Priority Resolution**: In a $1.20\text{ m}$ corridor, a Chasing guard (`priority = 10`) maintains forward velocity along the corridor axis ($\le 0.15\text{ m}$ deviation), while a Patrolling guard (`priority = 50`) yields to the wall, maintaining separation $\ge 0.80\text{ m}$ at all times without capsule interpenetration.
-- [ ] **AC-NAV-11 — Agent-Parameterized Aperture Clearance**: Navigating through a $0.60\text{ m}$ narrow gap fails for guard instances ($r_{\text{guard}} = 0.40\text{ m}$, required clear width $0.80\text{ m}$), confirming agent parameters are enforced over static queries.
-- [ ] **AC-NAV-13 — Off-Mesh Warp Recovery Gate**: If external physics forces cause `agent.isOnNavMesh == false`, the recovery routine samples the nearest surface within $1.0\text{ m}$ and calls `agent.Warp(hit.position)` to restore valid grounded navigation within 1 tick.
-- [ ] **AC-NAV-14 — HideSpot Approach Standoff Navigation**: Guard AI navigating toward an occupied HideSpot targets `guard_hold` ($\text{spot\_front\_anchor} + r_{\text{guard}} \times \text{hold\_vector}$) rather than the raw prop centroid, and reachability is tested against `proxy(interior_position)`.
-- [ ] **AC-NAV-17 — Multi-Guard Chase Staggered Query Distribution**: When multiple guards chase the player simultaneously, queries are round-robin interleaved so that at most 1 guard executes a full `CalculatePath` query on any single engine frame tick.
+- [x] **AC-NAV-12 — RVO Head-On Avoidance Priority Resolution**: In a $1.20\text{ m}$ corridor, a Chasing guard (`priority = 10`) maintains forward velocity along the corridor axis ($\le 0.15\text{ m}$ deviation), while a Patrolling guard (`priority = 50`) yields to the wall, maintaining separation $\ge 0.80\text{ m}$ at all times without capsule interpenetration.
+- [x] **AC-NAV-11 — Agent-Parameterized Aperture Clearance**: Navigating through a $0.60\text{ m}$ narrow gap fails for guard instances ($r_{\text{guard}} = 0.40\text{ m}$, required clear width $0.80\text{ m}$), confirming agent parameters are enforced over static queries.
+- [x] **AC-NAV-13 — Off-Mesh Warp Recovery Gate**: If external physics forces cause `agent.isOnNavMesh == false`, the recovery routine samples the nearest surface within $1.0\text{ m}$ and calls `agent.Warp(hit.position)` to restore valid grounded navigation within 1 tick.
+- [x] **AC-NAV-14 — HideSpot Approach Standoff Navigation**: Guard AI navigating toward an occupied HideSpot targets `guard_hold` ($\text{spot\_front\_anchor} + r_{\text{guard}} \times \text{hold\_vector}$) rather than the raw prop centroid, and reachability is tested against `proxy(interior_position)`.
+- [x] **AC-NAV-17 — Multi-Guard Chase Staggered Query Distribution**: When multiple guards chase the player simultaneously, queries are round-robin interleaved so that at most 1 guard executes a full `CalculatePath` query on any single engine frame tick.
 
 ---
 
@@ -123,7 +123,9 @@
 **Required evidence**:
 - Integration: `tests/integration/navigation/navmesh_avoidance_interop_test.cs` — must exist and pass
 
-**Status**: [ ] Not yet created
+**Status**: [x] Verified
+- Automated integration test suite: `tests/integration/navigation/navmesh_avoidance_interop_test.cs` (6 tests, 100% passing).
+- Validates RVO priority hierarchy resolution, agent-parameterized aperture physical clearance, off-mesh recovery warping, HideSpot standoff anchor calculation, and multi-guard query round-robin time-slicing.
 
 ---
 
@@ -131,3 +133,12 @@
 
 - Depends on: Story 001 (`story-001-nonalloc-query-polyline-metric.md`)
 - Unlocks: Story 003 (`story-003-corridor-clearance-certification.md`)
+
+---
+
+## Completion Notes
+**Completed**: 2026-09-22
+**Criteria**: 5/5 passing
+**Deviations**: None
+**Test Evidence**: Integration: test suite at `tests/integration/navigation/navmesh_avoidance_interop_test.cs` (6 tests)
+**Code Review**: Complete (Approved)
