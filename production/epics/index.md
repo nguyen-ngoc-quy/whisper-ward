@@ -13,3 +13,5 @@
 | **`navmesh-pathfinding`** | Core | #12 NavMesh / Pathfinding | `design/gdd/navmesh-pathfinding.md` | 3 stories | Complete |
 | **`camera-cinemachine`** | Core | #20 Camera (Cinemachine Rig) | `design/gdd/camera-cinemachine.md` | 3 stories | Complete |
 | **`level-playground`** | Feature | #8 Level / Content (Playable Arena) | `design/gdd/systems-index.md` | 6 stories | Complete |
+| **`guard-ai-perception`** | AI & Perception | #1 Guard AI & #2 Perception | `design/gdd/perception.md`, `guard-ai-fsm.md` | 5 stories | In Progress |
+| **`player-noise`** | Gameplay | #3 Player Noise | `design/gdd/player-noise.md` | 1 story | In Progress |

@@ -9,70 +9,70 @@
 #   done           <->  Complete
 #   blocked        <->  Blocked
 
-sprint: 2
-goal: "Xây dựng Scene 3D tương tác thực tế (Assets/Scenes/CorePlayground.unity) trong Unity 6 LTS, tích hợp hoàn chỉnh Player Capsule, Cinemachine Camera Rig và NavMesh Guard NPC, chuyển hóa 100% logic Core Layer thành trải nghiệm chơi thử bằng tay trực quan."
-start: "2026-09-22"
-end: "2026-10-03"
-generated: "2026-09-22"
-updated: "2026-09-22"
+sprint: 3
+goal: "Tích hợp hệ thống Thị giác (Vision Cone 100°, 12m), Máy đo Nghi ngờ (Suspicion Accumulator & Residual), Máy trạng thái FSM (Patrol -> Investigate -> Chase), và Cơ chế Phát tán Tiếng ồn bước chân vào Scene 3D CorePlayground.unity, tạo nên vòng lặp gameplay hành động lén lút (Stealth Loop) hoàn chỉnh."
+start: "2026-10-03"
+end: "2026-10-14"
+generated: "2026-10-03"
+updated: "2026-10-03"
 
 stories:
-  - id: "SCENE-01"
-    name: "3D Arena Geometry Blockout & Moonlit Lighting Setup"
-    file: "production/epics/level-playground/story-001-geometry-blockout.md"
-    priority: must-have
-    status: done
-    owner: "level-designer"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-09-22"
-
-  - id: "SCENE-02"
-    name: "Player Capsule Prefab & Runtime Input Driver Integration"
-    file: "production/epics/level-playground/story-002-player-prefab-input-driver.md"
-    priority: must-have
-    status: done
-    owner: "unity-specialist"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-09-22"
-
-  - id: "SCENE-03"
-    name: "Cinemachine Camera Rig & Orbit Follow Integration"
-    file: "production/epics/level-playground/story-003-cinemachine-orbit-rig.md"
-    priority: must-have
-    status: done
-    owner: "unity-specialist"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-09-22"
-
-  - id: "SCENE-04"
-    name: "NavMesh Surface Baking & Simple Patrol Guard NPC"
-    file: "production/epics/level-playground/story-004-navmesh-patrol-guard.md"
+  - id: "GUARD-01"
+    name: "Vision Cone Sensor & Line-of-Sight Sensing Engine"
+    file: "production/epics/guard-ai-perception/story-001-vision-cone-los-sensor.md"
     priority: must-have
     status: done
     owner: "ai-programmer"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-09-22"
+    completed: "2026-10-03"
 
-  - id: "SCENE-05"
-    name: "On-Screen Locomotion Debug HUD & Playtest Verification Suite"
-    file: "production/epics/level-playground/story-005-debug-hud-playtest.md"
+  - id: "GUARD-02"
+    name: "Suspicion Accumulator & Residual Wariness Engine"
+    file: "production/epics/guard-ai-perception/story-002-suspicion-accumulator-residual.md"
+    priority: must-have
+    status: done
+    owner: "systems-designer"
+    estimate_days: 0.5
+    blocker: ""
+    completed: "2026-10-03"
+
+  - id: "GUARD-03"
+    name: "Vision Cone 3D Mesh Visualizer & Suspicion Indicator"
+    file: "production/epics/guard-ai-perception/story-003-vision-cone-visualizer.md"
     priority: should-have
     status: done
-    owner: "qa-lead"
+    owner: "technical-artist"
     estimate_days: 0.4
     blocker: ""
-    completed: "2026-09-22"
+    completed: "2026-10-03"
 
-  - id: "SCENE-06"
-    name: "URP Moonlit Stealth Post-Processing & Distinct Materials"
-    file: "production/epics/level-playground/story-006-materials-post-processing.md"
-    priority: nice-to-have
+  - id: "GUARD-04"
+    name: "Guard FSM Runtime Controller (Patrol -> Investigate -> Chase)"
+    file: "production/epics/guard-ai-perception/story-004-guard-fsm-runtime-controller.md"
+    priority: must-have
     status: done
-    owner: "technical-artist"
-    estimate_days: 0.3
+    owner: "ai-programmer"
+    estimate_days: 0.5
     blocker: ""
-    completed: "2026-09-22"
+    completed: "2026-10-03"
+
+  - id: "GUARD-05"
+    name: "Search Dwell & Give-up Return to Patrol"
+    file: "production/epics/guard-ai-perception/story-005-search-dwell-giveup.md"
+    priority: should-have
+    status: done
+    owner: "ai-programmer"
+    estimate_days: 0.4
+    blocker: ""
+    completed: "2026-10-03"
+
+  - id: "NOISE-01"
+    name: "Player Footstep Noise Emitter & Guard Hearing Evaluation"
+    file: "production/epics/player-noise/story-001-footstep-noise-propagation.md"
+    priority: must-have
+    status: done
+    owner: "gameplay-programmer"
+    estimate_days: 0.5
+    blocker: ""
+    completed: "2026-10-03"

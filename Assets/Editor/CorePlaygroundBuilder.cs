@@ -6,6 +6,8 @@ using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 using WhisperWard.AI.Navigation;
+using WhisperWard.AI.Perception;
+using WhisperWard.AI.FSM;
 using WhisperWard.Core.Camera;
 using WhisperWard.Core.Player;
 
@@ -163,6 +165,24 @@ namespace WhisperWard.Editor
             GameObject playerRoot = BuildPlayerCapsule(playerSpawn.transform.position, playerSpawn.transform.rotation, charactersRoot.transform);
             GameObject guardRoot = BuildGuardPatrolNPC(guardSpawn.transform.position, guardSpawn.transform.rotation, charactersRoot.transform, new Transform[] { wpA.transform, wpB.transform });
 
+            // Wire player reference to guard perception and FSM systems (Sprint 03)
+            VisionConeSensor guardSensor = guardRoot.GetComponent<VisionConeSensor>();
+            if (guardSensor != null)
+            {
+                guardSensor.Configure(guardRoot.transform, playerRoot.transform);
+            }
+
+            GuardFSMRuntimeController guardFsm = guardRoot.GetComponent<GuardFSMRuntimeController>();
+            if (guardFsm != null)
+            {
+                guardFsm.Configure(
+                    guardRoot.GetComponent<NavMeshAgent>(),
+                    guardSensor,
+                    guardRoot.GetComponent<SuspicionAccumulator>(),
+                    guardRoot.GetComponent<SimplePatrolDriver>(),
+                    playerRoot.transform);
+            }
+
             // 11. Create Main Camera with CameraOrbitDriver & CinemachineBrain (SCENE-03, AC-SCENE-09)
             GameObject cameraRoot = new GameObject("--- CAMERA ---");
             GameObject mainCamGo = new GameObject("Main Camera");
@@ -280,6 +300,24 @@ namespace WhisperWard.Editor
                 patrolDriver.Configure(agent, waypoints, dwellDuration: 2.0f, speed: 2.30f);
             }
 
+            // Add VisionConeSensor (GUARD-01)
+            VisionConeSensor sensor = guardRoot.AddComponent<VisionConeSensor>();
+            sensor.Configure(guardRoot.transform, playerTransform: null);
+
+            // Add SuspicionAccumulator (GUARD-02)
+            SuspicionAccumulator accumulator = guardRoot.AddComponent<SuspicionAccumulator>();
+
+            // Add VisionConeVisualizer (GUARD-03)
+            VisionConeVisualizer visualizer = guardRoot.AddComponent<VisionConeVisualizer>();
+
+            // Add GuardFSMRuntimeController (GUARD-04, GUARD-05)
+            GuardFSMRuntimeController fsm = guardRoot.AddComponent<GuardFSMRuntimeController>();
+            fsm.Configure(agent, sensor, accumulator, patrolDriver, playerTransform: null);
+
+            // Add GuardHearingSensor (NOISE-01)
+            GuardHearingSensor hearing = guardRoot.AddComponent<GuardHearingSensor>();
+            hearing.Configure(fsm);
+
             // Save as Prefab Asset
             PrefabUtility.SaveAsPrefabAssetAndConnect(guardRoot, GuardPrefabPath, InteractionMode.AutomatedAction);
             Debug.Log($"[CorePlaygroundBuilder] Saved Guard Patrol NPC prefab at {GuardPrefabPath}");
@@ -342,6 +380,10 @@ namespace WhisperWard.Editor
             // Add PlayerRuntimeDriver
             PlayerRuntimeDriver driver = playerRoot.AddComponent<PlayerRuntimeDriver>();
             driver.Configure(controller, Camera.main, visual.transform);
+
+            // Add PlayerFootstepNoiseEmitter (NOISE-01)
+            PlayerFootstepNoiseEmitter noiseEmitter = playerRoot.AddComponent<PlayerFootstepNoiseEmitter>();
+            noiseEmitter.Configure(controller);
 
             // Save as Prefab Asset
             PrefabUtility.SaveAsPrefabAssetAndConnect(playerRoot, PlayerPrefabPath, InteractionMode.AutomatedAction);

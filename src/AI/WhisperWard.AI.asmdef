@@ -1,0 +1,17 @@
+{
+    "name": "WhisperWard.AI",
+    "rootNamespace": "WhisperWard.AI",
+    "references": [
+        "WhisperWard.Foundation",
+        "WhisperWard.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
