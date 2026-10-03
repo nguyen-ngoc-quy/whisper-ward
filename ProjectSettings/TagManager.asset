@@ -11,22 +11,22 @@ TagManager:
   - 
   - Water
   - UI
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
+  - Player
+  - Guard
+  - VisionOccluder
+  - SoundOccluder
+  - HideSpotTrigger
+  - PickupTrigger
+  -
+  -
+  -
+  -
+  -
+  -
+  -
+  -
+  - World
+  -
   - 
   - 
   - 

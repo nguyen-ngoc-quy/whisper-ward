@@ -9,47 +9,47 @@
 #   done           <->  Complete
 #   blocked        <->  Blocked
 
-sprint: 1
-goal: "Triển khai hoàn chỉnh tầng Core Layer (Player Kinematic Controller, NavMesh Pathfinding Query Service, và Cinemachine Camera Rig) với 100% NUnit EditMode/Integration tests đạt chuẩn."
-start: "2026-09-21"
-end: "2026-10-02"
-generated: "2026-09-21"
+sprint: 2
+goal: "Xây dựng Scene 3D tương tác thực tế (Assets/Scenes/CorePlayground.unity) trong Unity 6 LTS, tích hợp hoàn chỉnh Player Capsule, Cinemachine Camera Rig và NavMesh Guard NPC, chuyển hóa 100% logic Core Layer thành trải nghiệm chơi thử bằng tay trực quan."
+start: "2026-09-22"
+end: "2026-10-03"
+generated: "2026-09-22"
 updated: "2026-09-22"
 
 stories:
-  - id: "CORE-P01"
-    name: "Kinematic Locomotion, Diagonal Normalization & Linear Slew FSM"
-    file: "production/epics/player-third-person-controller/story-001-kinematic-locomotion-slew.md"
+  - id: "SCENE-01"
+    name: "3D Arena Geometry Blockout & Moonlit Lighting Setup"
+    file: "production/epics/level-playground/story-001-geometry-blockout.md"
+    priority: must-have
+    status: done
+    owner: "level-designer"
+    estimate_days: 0.5
+    blocker: ""
+    completed: "2026-09-22"
+
+  - id: "SCENE-02"
+    name: "Player Capsule Prefab & Runtime Input Driver Integration"
+    file: "production/epics/level-playground/story-002-player-prefab-input-driver.md"
     priority: must-have
     status: done
     owner: "unity-specialist"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-09-21"
+    completed: "2026-09-22"
 
-  - id: "CORE-P02"
-    name: "Camera-Relative Basis, Proportional Yaw Slew & Idle Facing Decoupling"
-    file: "production/epics/player-third-person-controller/story-002-camera-relative-basis-facing.md"
+  - id: "SCENE-03"
+    name: "Cinemachine Camera Rig & Orbit Follow Integration"
+    file: "production/epics/level-playground/story-003-cinemachine-orbit-rig.md"
     priority: must-have
     status: done
     owner: "unity-specialist"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-09-21"
+    completed: "2026-09-22"
 
-  - id: "CORE-P03"
-    name: "Feet-Anchored Capsule Scaling, Stand Headroom & HideSpot Exit"
-    file: "production/epics/player-third-person-controller/story-003-feet-anchored-capsule-headroom.md"
-    priority: must-have
-    status: done
-    owner: "unity-specialist"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-09-21"
-
-  - id: "CORE-NAV01"
-    name: "NonAlloc Path Query Service & Polyline Distance Metric"
-    file: "production/epics/navmesh-pathfinding/story-001-nonalloc-query-polyline-metric.md"
+  - id: "SCENE-04"
+    name: "NavMesh Surface Baking & Simple Patrol Guard NPC"
+    file: "production/epics/level-playground/story-004-navmesh-patrol-guard.md"
     priority: must-have
     status: done
     owner: "ai-programmer"
@@ -57,52 +57,22 @@ stories:
     blocker: ""
     completed: "2026-09-22"
 
-  - id: "CORE-NAV02"
-    name: "Reciprocal Velocity Avoidance & Spatial Navigation Interop"
-    file: "production/epics/navmesh-pathfinding/story-002-rvo-avoidance-navigation-interop.md"
-    priority: must-have
-    status: done
-    owner: "ai-programmer"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-09-22"
-
-  - id: "CORE-CAM01"
-    name: "Third-Person Follow Rig & Planar Basis Service"
-    file: "production/epics/camera-cinemachine/story-001-follow-rig-planar-basis.md"
-    priority: must-have
-    status: done
-    owner: "unity-specialist"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-09-22"
-
-  - id: "CORE-CAM02"
-    name: "Spherecast Deocclusion & Exponential Recovery Damping"
-    file: "production/epics/camera-cinemachine/story-002-spherecast-deocclusion-damping.md"
-    priority: must-have
-    status: done
-    owner: "unity-specialist"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-09-22"
-
-  - id: "CORE-NAV03"
-    name: "Spatial Corridor Clearance & NavMesh Certification Validator"
-    file: "production/epics/navmesh-pathfinding/story-003-corridor-clearance-certification.md"
+  - id: "SCENE-05"
+    name: "On-Screen Locomotion Debug HUD & Playtest Verification Suite"
+    file: "production/epics/level-playground/story-005-debug-hud-playtest.md"
     priority: should-have
     status: done
-    owner: "ai-programmer"
+    owner: "qa-lead"
     estimate_days: 0.4
     blocker: ""
     completed: "2026-09-22"
 
-  - id: "CORE-CAM03"
-    name: "Dynamic Chase FOV & HideSpot Viewport Blend"
-    file: "production/epics/camera-cinemachine/story-003-chase-fov-hidespot-blend.md"
-    priority: should-have
+  - id: "SCENE-06"
+    name: "URP Moonlit Stealth Post-Processing & Distinct Materials"
+    file: "production/epics/level-playground/story-006-materials-post-processing.md"
+    priority: nice-to-have
     status: done
-    owner: "unity-specialist"
-    estimate_days: 0.5
+    owner: "technical-artist"
+    estimate_days: 0.3
     blocker: ""
     completed: "2026-09-22"

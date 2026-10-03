@@ -228,6 +228,17 @@ namespace WhisperWard.Core.Player
         }
 
         /// <summary>
+        /// Forces immediate transition to crouch state (gamma = 0, latched = true).
+        /// </summary>
+        public void ForceCrouchImmediate()
+        {
+            _isCrouchLatched = true;
+            _gamma = 0.0f;
+            _currentStance = MovementStance.Crouched;
+            _currentState = LocomotionState.Crouch;
+        }
+
+        /// <summary>
         /// Advances the locomotion simulation deterministically by one tick.
         /// Fully non-allocating (0 B GC).
         /// </summary>

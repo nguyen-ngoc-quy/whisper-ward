@@ -4,15 +4,20 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Keeps Unity's generated compile tree synchronized with the canonical AI
-/// source under src/AI without editing Unity-generated project files.
+/// Keeps Unity's generated compile tree synchronized with the canonical
+/// source under src/Foundation, src/Core, and src/AI without editing Unity-generated project files.
 /// </summary>
 [InitializeOnLoad]
 public static class WhisperWardSourceSync
 {
-    private const string GeneratedRoot = "WhisperWardAI";
-    private const string RuntimeAssemblyName = "WhisperWard.AI";
-    private const string TestsAssemblyName = "WhisperWard.AI.Tests";
+    private const string FoundationGeneratedRoot = "WhisperWardFoundation";
+    private const string CoreGeneratedRoot = "WhisperWardCore";
+    private const string AIGeneratedRoot = "WhisperWardAI";
+
+    private const string FoundationAssemblyName = "WhisperWard.Foundation";
+    private const string CoreAssemblyName = "WhisperWard.Core";
+    private const string AIAssemblyName = "WhisperWard.AI";
+    private const string AITestsAssemblyName = "WhisperWard.AI.Tests";
     private static bool _syncing;
 
     static WhisperWardSourceSync()
@@ -20,7 +25,7 @@ public static class WhisperWardSourceSync
         EditorApplication.delayCall += Sync;
     }
 
-    [MenuItem("Whisper Ward/Sync Canonical AI Source")]
+    [MenuItem("Whisper Ward/Sync Canonical Source")]
     public static void Sync()
     {
         if (_syncing)
@@ -30,30 +35,52 @@ public static class WhisperWardSourceSync
         try
         {
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            string sourceRoot = Path.Combine(projectRoot, "src", "AI");
-            string generatedRoot = Path.Combine(Application.dataPath, GeneratedRoot);
-            string runtimeRoot = Path.Combine(generatedRoot, "Runtime");
-            string testsRoot = Path.Combine(generatedRoot, "Tests");
+            bool changed = false;
 
-            if (!Directory.Exists(sourceRoot))
+            // 1. Sync Foundation
+            string foundationSource = Path.Combine(projectRoot, "src", "Foundation");
+            if (Directory.Exists(foundationSource))
             {
-                Debug.LogError("Whisper Ward source sync failed: missing " + sourceRoot);
-                return;
+                string foundationDest = Path.Combine(Application.dataPath, FoundationGeneratedRoot, "Runtime");
+                changed |= SyncFiles(foundationSource, foundationDest, null);
+                changed |= WriteIfChanged(
+                    Path.Combine(foundationDest, FoundationAssemblyName + ".asmdef"),
+                    FoundationAssemblyDefinition);
             }
 
-            bool changed = SyncRuntime(sourceRoot, runtimeRoot);
-            changed |= SyncTests(Path.Combine(sourceRoot, "Testing"), testsRoot);
-            changed |= WriteIfChanged(
-                Path.Combine(runtimeRoot, RuntimeAssemblyName + ".asmdef"),
-                RuntimeAssemblyDefinition);
-            changed |= WriteIfChanged(
-                Path.Combine(testsRoot, TestsAssemblyName + ".asmdef"),
-                TestsAssemblyDefinition);
+            // 2. Sync Core
+            string coreSource = Path.Combine(projectRoot, "src", "Core");
+            if (Directory.Exists(coreSource))
+            {
+                string coreDest = Path.Combine(Application.dataPath, CoreGeneratedRoot, "Runtime");
+                changed |= SyncFiles(coreSource, coreDest, null);
+                changed |= WriteIfChanged(
+                    Path.Combine(coreDest, CoreAssemblyName + ".asmdef"),
+                    CoreAssemblyDefinition);
+            }
+
+            // 3. Sync AI
+            string aiSource = Path.Combine(projectRoot, "src", "AI");
+            if (Directory.Exists(aiSource))
+            {
+                string aiGeneratedRoot = Path.Combine(Application.dataPath, AIGeneratedRoot);
+                string aiRuntimeRoot = Path.Combine(aiGeneratedRoot, "Runtime");
+                string aiTestsRoot = Path.Combine(aiGeneratedRoot, "Tests");
+
+                changed |= SyncRuntime(aiSource, aiRuntimeRoot);
+                changed |= SyncTests(Path.Combine(aiSource, "Testing"), aiTestsRoot);
+                changed |= WriteIfChanged(
+                    Path.Combine(aiRuntimeRoot, AIAssemblyName + ".asmdef"),
+                    RuntimeAssemblyDefinition);
+                changed |= WriteIfChanged(
+                    Path.Combine(aiTestsRoot, AITestsAssemblyName + ".asmdef"),
+                    TestsAssemblyDefinition);
+            }
 
             if (changed)
             {
                 AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-                Debug.Log("Whisper Ward canonical AI source synchronized from src/AI.");
+                Debug.Log("Whisper Ward canonical source synchronized from src/Foundation, src/Core, and src/AI.");
             }
         }
         finally
@@ -155,10 +182,51 @@ public static class WhisperWardSourceSync
         return true;
     }
 
+    private const string FoundationAssemblyDefinition = @"{
+  ""name"": ""WhisperWard.Foundation"",
+  ""rootNamespace"": ""WhisperWard.Foundation"",
+  ""references"": [
+    ""Unity.InputSystem""
+  ],
+  ""includePlatforms"": [],
+  ""excludePlatforms"": [],
+  ""allowUnsafeCode"": false,
+  ""overrideReferences"": false,
+  ""precompiledReferences"": [],
+  ""autoReferenced"": true,
+  ""defineConstraints"": [],
+  ""versionDefines"": [],
+  ""noEngineReferences"": false
+}";
+
+    private const string CoreAssemblyDefinition = @"{
+  ""name"": ""WhisperWard.Core"",
+  ""rootNamespace"": ""WhisperWard.Core"",
+  ""references"": [
+    ""WhisperWard.Foundation"",
+    ""Unity.InputSystem"",
+    ""Unity.Cinemachine"",
+    ""Unity.AI.Navigation""
+  ],
+  ""includePlatforms"": [],
+  ""excludePlatforms"": [],
+  ""allowUnsafeCode"": false,
+  ""overrideReferences"": false,
+  ""precompiledReferences"": [],
+  ""autoReferenced"": true,
+  ""defineConstraints"": [],
+  ""versionDefines"": [],
+  ""noEngineReferences"": false
+}";
+
     private const string RuntimeAssemblyDefinition = @"{
   ""name"": ""WhisperWard.AI"",
   ""rootNamespace"": ""WhisperWard.AI"",
-  ""references"": [],
+  ""references"": [
+    ""WhisperWard.Foundation"",
+    ""WhisperWard.Core"",
+    ""Unity.AI.Navigation""
+  ],
   ""includePlatforms"": [],
   ""excludePlatforms"": [],
   ""allowUnsafeCode"": false,
