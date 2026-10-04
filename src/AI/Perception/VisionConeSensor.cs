@@ -45,6 +45,7 @@ namespace WhisperWard.AI.Perception
         [Header("Target Tracking")]
         [SerializeField] private Transform _target;
         [SerializeField] private bool _isTargetCrouching;
+        [SerializeField] private bool _isTargetInSanctuary;
 
         private IPhysicsQueryService _physicsQuery;
         private float _tickTimer;
@@ -78,6 +79,7 @@ namespace WhisperWard.AI.Perception
         public float TimeSinceLastLOS => _timeSinceLastLOS;
         public Transform Target => _target;
         public bool IsTargetCrouching => _isTargetCrouching;
+        public bool IsTargetInSanctuary => _isTargetInSanctuary;
 
         public Vector3 EyePosition => transform.position + Vector3.up * _eyeHeight;
 
@@ -139,6 +141,15 @@ namespace WhisperWard.AI.Perception
         public void SetTargetCrouching(bool isCrouching)
         {
             _isTargetCrouching = isCrouching;
+        }
+
+        /// <summary>
+        /// Sets whether the tracked target is currently concealed within an unwitnessed hide spot (Sanctuary).
+        /// When true, line of sight is suppressed and perception completely ignores the target (GDD #5 AC2, AC4, AC11).
+        /// </summary>
+        public void SetTargetSanctuary(bool inSanctuary)
+        {
+            _isTargetInSanctuary = inSanctuary;
         }
 
         /// <summary>
@@ -211,7 +222,7 @@ namespace WhisperWard.AI.Perception
 
         /// <summary>
         /// Pure non-allocating visibility evaluation method.
-        /// Computes horizontal FOV, distance limit, and stance-adaptive linecast occlusion.
+        /// Computes horizontal FOV, distance limit, stance-adaptive linecast occlusion, and sanctuary immunity.
         /// </summary>
         public bool EvaluateVisibility(
             Vector3 eyePosition,
@@ -223,6 +234,42 @@ namespace WhisperWard.AI.Perception
             out bool inCone,
             out bool occluded)
         {
+            return EvaluateVisibility(
+                eyePosition,
+                forward,
+                targetPosition,
+                isCrouching,
+                _isTargetInSanctuary,
+                out distance,
+                out angle,
+                out inCone,
+                out occluded);
+        }
+
+        /// <summary>
+        /// Pure non-allocating visibility evaluation method with explicit sanctuary state override.
+        /// Computes horizontal FOV, distance limit, stance-adaptive linecast occlusion, and sanctuary immunity.
+        /// </summary>
+        public bool EvaluateVisibility(
+            Vector3 eyePosition,
+            Vector3 forward,
+            Vector3 targetPosition,
+            bool isCrouching,
+            bool isTargetInSanctuary,
+            out float distance,
+            out float angle,
+            out bool inCone,
+            out bool occluded)
+        {
+            if (isTargetInSanctuary)
+            {
+                distance = 0.0f;
+                angle = 180.0f;
+                inCone = false;
+                occluded = false;
+                return false;
+            }
+
             // 1. Calculate target point based on stance height
             float targetHeightOffset = isCrouching ? _crouchTargetHeight : _standTargetHeight;
             Vector3 targetAimPoint = targetPosition + Vector3.up * targetHeightOffset;

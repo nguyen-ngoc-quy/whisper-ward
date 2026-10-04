@@ -59,6 +59,9 @@ namespace WhisperWard.AI.FSM
         [Tooltip("Horizontal look-around scan sweep angle in degrees during dwell search (GDD: 45 deg).")]
         [SerializeField] private float _scanArcAngle = 45.00f;
 
+        [Tooltip("Additional base yaw offset in degrees applied during investigation dwell sweep (e.g. for multi-guard coordination).")]
+        [SerializeField] private float _dwellYawOffset = 0f;
+
         [Header("Component References")]
         [SerializeField] private NavMeshAgent _agent;
         [SerializeField] private VisionConeSensor _sensor;
@@ -74,6 +77,12 @@ namespace WhisperWard.AI.FSM
         private bool _isDwellingAtLKP;
         private float _lkpBaseYaw;
         private bool _isInitialized;
+
+        // Witnessed hide spot state
+        private bool _isChasingHideSpot;
+        private Vector3 _chaseHideSpotHoldPosition;
+        private float _hideSpotDwellTimer;
+        private float _hideSpotDwellDuration = 1.50f;
 
         // Events
         /// <summary>Fires whenever guard transitions between FSM states.</summary>
@@ -98,9 +107,23 @@ namespace WhisperWard.AI.FSM
         public float GiveupTimer => _giveupTimer;
         public float GiveupTimeout => _giveupTimeout;
         public float ScanArcAngle => _scanArcAngle;
+        public float DwellYawOffset => _dwellYawOffset;
         public bool IsDwellingAtLKP => _isDwellingAtLKP;
         public Vector3 InvestigationTarget => _investigationTarget;
         public Transform PlayerTransform => _playerTransform;
+        public bool IsChasingHideSpot => _isChasingHideSpot;
+        public float HideSpotDwellTimer => _hideSpotDwellTimer;
+        public float HideSpotDwellDuration => _hideSpotDwellDuration;
+        public Vector3 ChaseHideSpotHoldPosition => _chaseHideSpotHoldPosition;
+
+        /// <summary>
+        /// Sets a divergent base yaw offset in degrees applied during investigation dwell sweep.
+        /// Used by MultiGuardSearchCoordinator to ensure guards scan complementary fields of view.
+        /// </summary>
+        public void SetDwellYawOffset(float offsetDeg)
+        {
+            _dwellYawOffset = offsetDeg;
+        }
 
         private void Awake()
         {
@@ -274,6 +297,7 @@ namespace WhisperWard.AI.FSM
 
                     Vector3 lkp = _investigationTarget;
                     OnInvestigateGivenUp?.Invoke(lkp);
+                    _dwellYawOffset = 0f;
                     TransitionTo(GuardState.Patrol);
                 }
             }
@@ -287,7 +311,7 @@ namespace WhisperWard.AI.FSM
                         // Arrived at LKP -> initiate dwell search
                         _isDwellingAtLKP = true;
                         _giveupTimer = 0f;
-                        _lkpBaseYaw = transform.eulerAngles.y;
+                        _lkpBaseYaw = (transform.eulerAngles.y + _dwellYawOffset) % 360f;
                     }
                 }
                 else
@@ -300,7 +324,7 @@ namespace WhisperWard.AI.FSM
                     {
                         _isDwellingAtLKP = true;
                         _giveupTimer = 0f;
-                        _lkpBaseYaw = transform.eulerAngles.y;
+                        _lkpBaseYaw = (transform.eulerAngles.y + _dwellYawOffset) % 360f;
                     }
                 }
             }
@@ -309,6 +333,28 @@ namespace WhisperWard.AI.FSM
         private void TickChase(float deltaTime)
         {
             if (_playerTransform == null) return;
+
+            if (_isChasingHideSpot)
+            {
+                // Navigating to witnessed hide spot guard_hold
+                if (_agent != null && _agent.isOnNavMesh)
+                {
+                    _agent.SetDestination(_chaseHideSpotHoldPosition);
+                }
+
+                Vector3 curPos = transform.position;
+                float dx = curPos.x - _chaseHideSpotHoldPosition.x;
+                float dz = curPos.z - _chaseHideSpotHoldPosition.z;
+                if ((dx * dx + dz * dz) <= (_arrivalTolerance * _arrivalTolerance))
+                {
+                    _hideSpotDwellTimer += deltaTime;
+                    if (_hideSpotDwellTimer >= _hideSpotDwellDuration)
+                    {
+                        ExecuteCapture();
+                    }
+                }
+                return;
+            }
 
             // Continually update destination to player position
             if (_agent != null && _agent.isOnNavMesh)
@@ -338,7 +384,10 @@ namespace WhisperWard.AI.FSM
             }
         }
 
-        private void ExecuteCapture()
+        /// <summary>
+        /// Commits the player capture event, freezing the agent and terminating gameplay.
+        /// </summary>
+        public void ExecuteCapture()
         {
             GuardState previous = _currentState;
             _currentState = GuardState.Captured;
@@ -399,6 +448,7 @@ namespace WhisperWard.AI.FSM
 
             _catchTimer = 0f;
             _isDwellingAtLKP = false;
+            _dwellYawOffset = 0f;
 
             if (_patrolDriver != null)
             {
@@ -420,6 +470,38 @@ namespace WhisperWard.AI.FSM
         }
 
         /// <summary>
+        /// Commands the guard to investigate a witnessed hide spot where the player was seen entering during active Chase.
+        /// Guard navigates to guard_hold and executes dwell verify before committing capture (GDD #5 AC2, AC3, AC16).
+        /// </summary>
+        public void ChaseWitnessedHideSpot(Vector3 guardHoldPosition, float dwellDuration = 1.50f)
+        {
+            if (_currentState != GuardState.Chase)
+            {
+                TriggerChase(guardHoldPosition);
+            }
+
+            _isChasingHideSpot = true;
+            _chaseHideSpotHoldPosition = guardHoldPosition;
+            _hideSpotDwellDuration = Mathf.Max(0.1f, dwellDuration);
+            _hideSpotDwellTimer = 0f;
+
+            if (_agent != null && _agent.isOnNavMesh)
+            {
+                _agent.isStopped = false;
+                _agent.SetDestination(guardHoldPosition);
+            }
+        }
+
+        /// <summary>
+        /// Clears the witnessed hide spot pursuit (e.g. if the player exits the spot before dwell completes).
+        /// </summary>
+        public void ClearWitnessedHideSpot()
+        {
+            _isChasingHideSpot = false;
+            _hideSpotDwellTimer = 0f;
+        }
+
+        /// <summary>
         /// Transitions to a new FSM state, synchronously updating agent speed.
         /// </summary>
         public void TransitionTo(GuardState newState)
@@ -430,6 +512,12 @@ namespace WhisperWard.AI.FSM
             _currentState = newState;
 
             SetSpeedForState(_currentState);
+
+            if (_currentState != GuardState.Chase)
+            {
+                _isChasingHideSpot = false;
+                _hideSpotDwellTimer = 0f;
+            }
 
             if (_currentState == GuardState.Patrol)
             {

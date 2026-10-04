@@ -51,11 +51,13 @@ namespace WhisperWard.AI.Perception
         private void OnEnable()
         {
             PlayerFootstepNoiseEmitter.OnAnyFootstepNoiseEmitted += HandleFootstepNoise;
+            BurstDistractionNoiseMaker.OnAnyBurstNoiseEmitted += HandleBurstNoise;
         }
 
         private void OnDisable()
         {
             PlayerFootstepNoiseEmitter.OnAnyFootstepNoiseEmitted -= HandleFootstepNoise;
+            BurstDistractionNoiseMaker.OnAnyBurstNoiseEmitted -= HandleBurstNoise;
         }
 
         /// <summary>
@@ -78,6 +80,31 @@ namespace WhisperWard.AI.Perception
                 // Noise detected and verified! Transition to Investigate
                 _fsm.TriggerInvestigate(noiseOrigin, "footstep_noise");
                 OnNoiseHeard?.Invoke(noiseOrigin, nominalRadius);
+            }
+        }
+
+        /// <summary>
+        /// Callback receiver for global burst distraction noise broadcasts.
+        /// AC-NOISE-08: Patrolling guard transitions to Investigate at impact point.
+        /// Zero managed allocations.
+        /// </summary>
+        public void HandleBurstNoise(Vector3 impactPoint, float nominalRadius)
+        {
+            if (_fsm == null) return;
+
+            // Patrolling or investigating guard reacts to fresh burst distraction
+            // (If in Chase or Captured, Chase-wins rule R13 holds)
+            if (_fsm.CurrentState != GuardFSMRuntimeController.GuardState.Patrol &&
+                _fsm.CurrentState != GuardFSMRuntimeController.GuardState.Investigate)
+            {
+                return;
+            }
+
+            if (EvaluateHearing(transform.position, impactPoint, nominalRadius, out bool withinRadius, out bool occluded))
+            {
+                // Burst sound detected! Redirect to investigate impact point
+                _fsm.TriggerInvestigate(impactPoint, "burst_distraction");
+                OnNoiseHeard?.Invoke(impactPoint, nominalRadius);
             }
         }
 

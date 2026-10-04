@@ -9,70 +9,70 @@
 #   done           <->  Complete
 #   blocked        <->  Blocked
 
-sprint: 3
-goal: "Tích hợp hệ thống Thị giác (Vision Cone 100°, 12m), Máy đo Nghi ngờ (Suspicion Accumulator & Residual), Máy trạng thái FSM (Patrol -> Investigate -> Chase), và Cơ chế Phát tán Tiếng ồn bước chân vào Scene 3D CorePlayground.unity, tạo nên vòng lặp gameplay hành động lén lút (Stealth Loop) hoàn chỉnh."
-start: "2026-10-03"
-end: "2026-10-14"
+sprint: 4
+goal: "Nâng cấp trải nghiệm lén lút chiến thuật với Cơ chế Ẩn nấp (Hide Spots), Đồ vật Đánh lạc hướng (Burst Distraction), Mạng lưới Báo động Phối hợp Lính gác (Coordinated Alert & Radio Bark), và Giao diện Cảnh báo Nghi ngờ (Suspicion Meter HUD)."
+start: "2026-10-15"
+end: "2026-10-26"
 generated: "2026-10-03"
-updated: "2026-10-03"
+updated: "2026-10-04"
 
 stories:
-  - id: "GUARD-01"
-    name: "Vision Cone Sensor & Line-of-Sight Sensing Engine"
-    file: "production/epics/guard-ai-perception/story-001-vision-cone-los-sensor.md"
-    priority: must-have
-    status: done
-    owner: "ai-programmer"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-10-03"
-
-  - id: "GUARD-02"
-    name: "Suspicion Accumulator & Residual Wariness Engine"
-    file: "production/epics/guard-ai-perception/story-002-suspicion-accumulator-residual.md"
-    priority: must-have
-    status: done
-    owner: "systems-designer"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-10-03"
-
-  - id: "GUARD-03"
-    name: "Vision Cone 3D Mesh Visualizer & Suspicion Indicator"
-    file: "production/epics/guard-ai-perception/story-003-vision-cone-visualizer.md"
-    priority: should-have
-    status: done
-    owner: "technical-artist"
-    estimate_days: 0.4
-    blocker: ""
-    completed: "2026-10-03"
-
-  - id: "GUARD-04"
-    name: "Guard FSM Runtime Controller (Patrol -> Investigate -> Chase)"
-    file: "production/epics/guard-ai-perception/story-004-guard-fsm-runtime-controller.md"
-    priority: must-have
-    status: done
-    owner: "ai-programmer"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-10-03"
-
-  - id: "GUARD-05"
-    name: "Search Dwell & Give-up Return to Patrol"
-    file: "production/epics/guard-ai-perception/story-005-search-dwell-giveup.md"
-    priority: should-have
-    status: done
-    owner: "ai-programmer"
-    estimate_days: 0.4
-    blocker: ""
-    completed: "2026-10-03"
-
-  - id: "NOISE-01"
-    name: "Player Footstep Noise Emitter & Guard Hearing Evaluation"
-    file: "production/epics/player-noise/story-001-footstep-noise-propagation.md"
+  - id: "HIDE-01"
+    name: "Hide Spot & Sanctuary Interaction Volume"
+    file: "production/epics/player-movement-hide/story-001-hidespot-interaction-sanctuary.md"
     priority: must-have
     status: done
     owner: "gameplay-programmer"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-10-03"
+    completed: "2026-10-04"
+
+  - id: "NOISE-02"
+    name: "Burst Noise-Maker Distraction Tool"
+    file: "production/epics/player-noise/story-002-burst-distraction-noisemaker.md"
+    priority: must-have
+    status: done
+    owner: "gameplay-programmer"
+    estimate_days: 0.5
+    blocker: ""
+    completed: "2026-10-04"
+
+  - id: "ALERT-01"
+    name: "Guard Radio Bark & Coordinated Alert"
+    file: "production/epics/guard-ai-coordinated-alert/story-001-radio-bark-alert-propagation.md"
+    priority: must-have
+    status: done
+    owner: "ai-programmer"
+    estimate_days: 0.5
+    blocker: ""
+    completed: "2026-10-04"
+
+  - id: "UI-SUSP-01"
+    name: "Suspicion Meter & Threat Chevron HUD"
+    file: "production/epics/suspicion-meter-grade/story-001-suspicion-meter-chevron-hud.md"
+    priority: should-have
+    status: done
+    owner: "ui-programmer"
+    estimate_days: 0.4
+    blocker: ""
+    completed: "2026-10-04"
+
+  - id: "ALERT-02"
+    name: "Multi-Guard Search Standoff Coordination"
+    file: "production/epics/guard-ai-coordinated-alert/story-002-multi-guard-search-coordination.md"
+    priority: should-have
+    status: done
+    owner: "ai-programmer"
+    estimate_days: 0.4
+    blocker: ""
+    completed: "2026-10-04"
+
+  - id: "FEEDBACK-01"
+    name: "Guard Overhead Markers & Telegraphs"
+    file: "production/epics/audio-ui-feedback/story-001-overhead-state-markers.md"
+    priority: nice-to-have
+    status: done
+    owner: "technical-artist"
+    estimate_days: 0.3
+    blocker: ""
+    completed: "2026-10-04"

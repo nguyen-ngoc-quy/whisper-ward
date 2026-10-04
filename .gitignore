@@ -5,6 +5,16 @@ production/session-state/
 .claude/agent-memory/
 .claude/settings.local.json
 
+# Planning and agent artifacts
+plans/
+.claude/plans/
+docs/superpowers/plans/
+*.plan
+*.plan.md
+
+# Local scripts
+*.ps1
+
 # Local dumps and secrets
 bash.exe.stackdump
 .env

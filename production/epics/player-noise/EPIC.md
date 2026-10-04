@@ -3,8 +3,8 @@
 > **Layer**: Gameplay (Core Perception Interop)  
 > **GDD Reference**: `design/gdd/player-noise.md` (#3 Player Noise), `design/gdd/perception.md` (R5 Hearing)  
 > **Governing ADRs**: `ADR-0001` (Event Bus), `ADR-0002` (Physics Query Service)  
-> **Status**: In Progress  
-> **Stories**: 1 story in Sprint 03 (`NOISE-01`)  
+> **Status**: Complete  
+> **Stories**: 2 stories (`NOISE-01` in Sprint 03, `NOISE-02` in Sprint 04)  
 
 ## Overview
 
@@ -12,6 +12,7 @@ The Player Noise epic governs sound emission, spatial propagation, and guard hea
 - **Crouch**: $0\text{ m}$ (Committed stealth state — completely silent).
 - **Walk**: $4.0\text{ m}$ planar hearing radius.
 - **Run**: $6.0\text{ m}$ planar hearing radius.
+- **Burst Distraction Tool**: $10.0\text{ m}$ ballistic impact pulse.
 
 Hearing evaluation is evaluated at 5 Hz with E20 Linecast wall occlusion and soft vertical attenuation ($R_{eff} = R \times \max(0, 1 - |\Delta Y|/4.0)$).
 
@@ -19,7 +20,8 @@ Hearing evaluation is evaluated at 5 Hz with E20 Linecast wall occlusion and sof
 
 | # | Story | Type | Status | Owner |
 |---|-------|------|--------|-------|
-| `NOISE-01` | Player Footstep Noise Emitter & Guard Hearing Evaluation | Logic/Integration | Ready | gameplay-programmer |
+| `NOISE-01` | Player Footstep Noise Emitter & Guard Hearing Evaluation | Logic/Integration | Complete | gameplay-programmer |
+| `NOISE-02` | Burst Noise-Maker Distraction Tool | Logic/Integration | Complete | gameplay-programmer |
 
 ## Definition of Done
 
