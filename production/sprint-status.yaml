@@ -9,17 +9,17 @@
 #   done           <->  Complete
 #   blocked        <->  Blocked
 
-sprint: 4
-goal: "Nâng cấp trải nghiệm lén lút chiến thuật với Cơ chế Ẩn nấp (Hide Spots), Đồ vật Đánh lạc hướng (Burst Distraction), Mạng lưới Báo động Phối hợp Lính gác (Coordinated Alert & Radio Bark), và Giao diện Cảnh báo Nghi ngờ (Suspicion Meter HUD)."
-start: "2026-10-15"
-end: "2026-10-26"
-generated: "2026-10-03"
+sprint: 5
+goal: "Xây dựng vòng lặp nhiệm vụ chơi được hoàn chỉnh (Playable Objective Loop): Lấy vật phẩm mục tiêu (Keycard/Data Drive), mở khóa cổng bảo an (Locked Security Gate), rút lui an toàn qua ranh giới thoát hiểm (Extraction Zone), và Đánh giá Xếp hạng Lén lút (Stealth Grade Operator System) với bảng tổng kết điểm số Rank S/A/B/C/F."
+start: "2026-10-27"
+end: "2026-11-07"
+generated: "2026-10-04"
 updated: "2026-10-04"
 
 stories:
-  - id: "HIDE-01"
-    name: "Hide Spot & Sanctuary Interaction Volume"
-    file: "production/epics/player-movement-hide/story-001-hidespot-interaction-sanctuary.md"
+  - id: "GRADE-01"
+    name: "Stealth Grade Operator System"
+    file: "production/epics/suspicion-meter-grade/story-002-stealth-grade-operator.md"
     priority: must-have
     status: done
     owner: "gameplay-programmer"
@@ -27,9 +27,9 @@ stories:
     blocker: ""
     completed: "2026-10-04"
 
-  - id: "NOISE-02"
-    name: "Burst Noise-Maker Distraction Tool"
-    file: "production/epics/player-noise/story-002-burst-distraction-noisemaker.md"
+  - id: "OBJ-01"
+    name: "Objective Keycard Pickup & Inventory State"
+    file: "production/epics/objective-mission-flow/story-001-keycard-pickup-inventory.md"
     priority: must-have
     status: done
     owner: "gameplay-programmer"
@@ -37,42 +37,32 @@ stories:
     blocker: ""
     completed: "2026-10-04"
 
-  - id: "ALERT-01"
-    name: "Guard Radio Bark & Coordinated Alert"
-    file: "production/epics/guard-ai-coordinated-alert/story-001-radio-bark-alert-propagation.md"
+  - id: "OBJ-02"
+    name: "Locked Security Gate & Extraction Zone"
+    file: "production/epics/objective-mission-flow/story-002-locked-gate-extraction-zone.md"
     priority: must-have
     status: done
-    owner: "ai-programmer"
+    owner: "gameplay-programmer"
     estimate_days: 0.5
-    blocker: ""
-    completed: "2026-10-04"
+    blocker: "OBJ-01"
+    completed: "2026-10-05"
 
-  - id: "UI-SUSP-01"
-    name: "Suspicion Meter & Threat Chevron HUD"
-    file: "production/epics/suspicion-meter-grade/story-001-suspicion-meter-chevron-hud.md"
+  - id: "FLOW-01"
+    name: "Mission Game Loop & Lifecycle Controller"
+    file: "production/epics/objective-mission-flow/story-003-mission-lifecycle-controller.md"
     priority: should-have
-    status: done
+    status: backlog
+    owner: "gameplay-programmer"
+    estimate_days: 0.4
+    blocker: "GRADE-01, OBJ-02"
+    completed: ""
+
+  - id: "UI-RESULT-01"
+    name: "End-of-Mission Scorecard & Grade Card HUD"
+    file: "production/epics/suspicion-meter-grade/story-003-end-of-mission-grade-card-ui.md"
+    priority: should-have
+    status: backlog
     owner: "ui-programmer"
-    estimate_days: 0.4
-    blocker: ""
-    completed: "2026-10-04"
-
-  - id: "ALERT-02"
-    name: "Multi-Guard Search Standoff Coordination"
-    file: "production/epics/guard-ai-coordinated-alert/story-002-multi-guard-search-coordination.md"
-    priority: should-have
-    status: done
-    owner: "ai-programmer"
-    estimate_days: 0.4
-    blocker: ""
-    completed: "2026-10-04"
-
-  - id: "FEEDBACK-01"
-    name: "Guard Overhead Markers & Telegraphs"
-    file: "production/epics/audio-ui-feedback/story-001-overhead-state-markers.md"
-    priority: nice-to-have
-    status: done
-    owner: "technical-artist"
-    estimate_days: 0.3
-    blocker: ""
-    completed: "2026-10-04"
+    estimate_days: 0.5
+    blocker: "GRADE-01, FLOW-01"
+    completed: ""
