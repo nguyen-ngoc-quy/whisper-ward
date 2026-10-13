@@ -51,11 +51,11 @@ stories:
     name: "Mission Game Loop & Lifecycle Controller"
     file: "production/epics/objective-mission-flow/story-003-mission-lifecycle-controller.md"
     priority: should-have
-    status: backlog
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 0.4
     blocker: "GRADE-01, OBJ-02"
-    completed: ""
+    completed: "2026-10-13"
 
   - id: "UI-RESULT-01"
     name: "End-of-Mission Scorecard & Grade Card HUD"
