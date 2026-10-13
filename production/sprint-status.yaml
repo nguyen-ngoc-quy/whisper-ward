@@ -61,8 +61,8 @@ stories:
     name: "End-of-Mission Scorecard & Grade Card HUD"
     file: "production/epics/suspicion-meter-grade/story-003-end-of-mission-grade-card-ui.md"
     priority: should-have
-    status: backlog
+    status: done
     owner: "ui-programmer"
     estimate_days: 0.5
     blocker: "GRADE-01, FLOW-01"
-    completed: ""
+    completed: "2026-10-13"

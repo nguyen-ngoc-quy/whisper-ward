@@ -2,7 +2,7 @@
 
 > **Epic**: Suspicion Meter HUD & Grade Operator (`production/epics/suspicion-meter-grade/EPIC.md`)  
 > **Story ID**: `UI-RESULT-01`  
-> **Status**: Ready  
+> **Status**: Complete  
 > **Layer**: UI / HUD  
 > **Type**: UI Implementation  
 > **Estimate**: 4h (0.5d)  
@@ -29,9 +29,9 @@
 
 ## Acceptance Criteria
 
-- [ ] **AC-UI-05 — Scorecard Presentation**: Tự động hiển thị khi nhận kết quả `StealthGradeResult`.
-- [ ] **AC-UI-06 — Grade Badge & Breakdown Formatting**: Định dạng đúng chữ cái xếp hạng, màu sắc, điểm số và các mục khấu trừ chi tiết.
-- [ ] **AC-UI-07 — Modal Control & Dismissal**: Cung cấp cơ chế mở/đóng và tương tác nút bấm.
+- [x] **AC-UI-05 — Scorecard Presentation**: Tự động hiển thị khi nhận kết quả `StealthGradeResult`.
+- [x] **AC-UI-06 — Grade Badge & Breakdown Formatting**: Định dạng đúng chữ cái xếp hạng, màu sắc, điểm số và các mục khấu trừ chi tiết.
+- [x] **AC-UI-07 — Modal Control & Dismissal**: Cung cấp cơ chế mở/đóng và tương tác nút bấm.
 
 ---
 
