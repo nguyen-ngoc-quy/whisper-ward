@@ -6,7 +6,7 @@ using WhisperWard.Core.Contracts;
 using UnityEngine.InputSystem;
 #endif
 
-namespace WhisperWard.Core.Camera
+namespace WhisperWard.Core.CameraRig
 {
     /// <summary>
     /// Runtime MonoBehaviour driver bridging Unity hardware input, transforms, and rendering

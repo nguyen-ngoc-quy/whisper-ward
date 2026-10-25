@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 using WhisperWard.AI.Navigation;
 using WhisperWard.AI.Perception;
 using WhisperWard.AI.FSM;
-using WhisperWard.Core.Camera;
+using WhisperWard.Core.CameraRig;
 using WhisperWard.Core.Player;
 
 namespace WhisperWard.Editor
@@ -169,7 +169,7 @@ namespace WhisperWard.Editor
             VisionConeSensor guardSensor = guardRoot.GetComponent<VisionConeSensor>();
             if (guardSensor != null)
             {
-                guardSensor.Configure(guardRoot.transform, playerRoot.transform);
+                guardSensor.SetTarget(playerRoot.transform);
             }
 
             GuardFSMRuntimeController guardFsm = guardRoot.GetComponent<GuardFSMRuntimeController>();
@@ -301,8 +301,8 @@ namespace WhisperWard.Editor
             }
 
             // Add VisionConeSensor (GUARD-01)
+            // Self-initializes via serialized GDD defaults (12m, 100 deg, Layer 20); target wired after player spawn.
             VisionConeSensor sensor = guardRoot.AddComponent<VisionConeSensor>();
-            sensor.Configure(guardRoot.transform, playerTransform: null);
 
             // Add SuspicionAccumulator (GUARD-02)
             SuspicionAccumulator accumulator = guardRoot.AddComponent<SuspicionAccumulator>();

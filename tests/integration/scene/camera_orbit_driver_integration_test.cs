@@ -1,6 +1,6 @@
 using NUnit.Framework;
 using UnityEngine;
-using WhisperWard.Core.Camera;
+using WhisperWard.Core.CameraRig;
 using WhisperWard.Core.Contracts;
 
 namespace WhisperWard.Tests.Integration.Scene

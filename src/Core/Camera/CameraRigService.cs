@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 using WhisperWard.Core.Contracts;
 
-namespace WhisperWard.Core.Camera
+namespace WhisperWard.Core.CameraRig
 {
     /// <summary>
     /// Delegate for non-allocating SphereCast operations, enabling deterministic EditMode testing.

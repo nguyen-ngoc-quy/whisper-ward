@@ -1,6 +1,6 @@
 using NUnit.Framework;
 using UnityEngine;
-using WhisperWard.Core.Camera;
+using WhisperWard.Core.CameraRig;
 using WhisperWard.Core.Contracts;
 using WhisperWard.Core.Player;
 
@@ -70,7 +70,7 @@ namespace WhisperWard.Tests.Integration.Scene
 
             // Assert: verify initial telemetry matches idle stand state (AC-SCENE-16)
             Assert.That(_hud.LastSpeed, Is.EqualTo(0.0f).Within(1e-3f));
-            Assert.That(_hud.LastStance, Is.EqualTo(MovementStance.Stand));
+            Assert.That(_hud.LastStance, Is.EqualTo(MovementStance.Standing));
             Assert.That(_hud.LastCapsuleHeight, Is.EqualTo(1.80f).Within(1e-3f));
             Assert.That(_hud.LastHeadroomBlocked, Is.False);
             Assert.That(_hud.LastCameraDistance, Is.EqualTo(2.80f).Within(1e-3f));
@@ -126,7 +126,7 @@ namespace WhisperWard.Tests.Integration.Scene
             _hud.RefreshTelemetry(force: true);
 
             // Assert: Stance must register as Crouch and capsule height reduced towards 1.20m
-            Assert.That(_hud.LastStance, Is.EqualTo(MovementStance.Crouch));
+            Assert.That(_hud.LastStance, Is.EqualTo(MovementStance.Crouched));
             Assert.That(_hud.LastCapsuleHeight, Is.LessThan(1.50f));
             Assert.That(_hud.CachedTelemetryText, Does.Contain("Physical Stance  : Crouch"));
         }

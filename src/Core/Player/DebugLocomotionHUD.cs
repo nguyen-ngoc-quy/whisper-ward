@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 using UnityEngine;
-using WhisperWard.Core.Camera;
+using WhisperWard.Core.CameraRig;
 using WhisperWard.Core.Contracts;
 
 namespace WhisperWard.Core.Player
@@ -174,7 +174,7 @@ namespace WhisperWard.Core.Player
             else
             {
                 _lastSpeed = 0f;
-                _lastStance = MovementStance.Stand;
+                _lastStance = MovementStance.Standing;
                 _lastHeadroomBlocked = false;
                 _lastCapsuleHeight = 1.80f;
             }
@@ -184,8 +184,8 @@ namespace WhisperWard.Core.Player
             {
                 _lastCameraDistance = _cameraDriver.CurrentDistance;
                 _lastFov = _cameraDriver.RigService != null
-                    ? _cameraDriver.RigService.ActiveFov
-                    : (_cameraDriver.Camera != null ? _cameraDriver.Camera.fieldOfView : 60f);
+                    ? _cameraDriver.RigService.CurrentFov
+                    : (_cameraDriver.TargetCamera != null ? _cameraDriver.TargetCamera.fieldOfView : 60f);
             }
             else
             {

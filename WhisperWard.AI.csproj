@@ -43,39 +43,48 @@
     <UnityVersion>6000.3.17f1</UnityVersion>
   </PropertyGroup>
   <ItemGroup>
-    <Analyzer Include="C:\Users\QUY\.vscode\extensions\visualstudiotoolsforunity.vstuc-1.3.1\Analyzers\Microsoft.Unity.Analyzers.dll" />
+    <Analyzer Include="C:\Users\QUY\.vscode\extensions\visualstudiotoolsforunity.vstuc-1.3.2\Analyzers\Microsoft.Unity.Analyzers.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\6000.3.17f1\Editor\Data\Tools\BuildPipeline\Unity.SourceGenerators\Unity.SourceGenerators.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\6000.3.17f1\Editor\Data\Tools\BuildPipeline\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\6000.3.17f1\Editor\Data\Tools\BuildPipeline\Unity.SourceGenerators\Unity.UIToolkit.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\WhisperWardAI\Runtime\UI\GuardOverheadMarkerController.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Perception\R12Schema.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\FSM\GuardGoalMode.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\SuspicionGrade\SuspicionGradeEvents.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\SuspicionGrade\SuspicionGradeConfiguration.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Navigation\CatchEvaluator.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\FSM\IGuardState.cs" />
+    <Compile Include="Assets\WhisperWardAI\Runtime\Perception\VisionConeVisualizer.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\FSM\States\ChaseState.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\PhysicsQueryProfile.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\FSM\States\PatrolState.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\SuspicionGrade\RoomGradeOperator.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\NoiseResponseProfile.cs" />
+    <Compile Include="Assets\WhisperWardAI\Runtime\Perception\GuardHearingSensor.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Perception\PerceptionHearingService.cs" />
+    <Compile Include="Assets\WhisperWardAI\Runtime\Alert\GuardRadioAlertTransceiver.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\SuspicionGrade\SuspicionGradeSystem.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\IEvent.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\BurstTrajectorySolver.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\BurstRuntimeConfiguration.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\NoiseSourceRecord.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\GuardAISystem.cs" />
+    <Compile Include="Assets\WhisperWardAI\Runtime\FSM\GuardFSMRuntimeController.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\SuspicionGrade\SuspicionMeterCalculator.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Navigation\GuardNavigator.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\EventBus.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\NoiseRejectionCodes.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\NoiseRuntimeConfiguration.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\SuspicionGrade\SuspicionMeterPresenter.cs" />
+    <Compile Include="Assets\WhisperWardAI\Runtime\Perception\SuspicionAccumulator.cs" />
+    <Compile Include="Assets\WhisperWardAI\Runtime\Alert\MultiGuardSearchCoordinator.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\DecisionTap.cs" />
+    <Compile Include="Assets\WhisperWardAI\Runtime\Perception\VisionConeSensor.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\FSM\SuppressionVisibilityPolicy.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\SessionBoundaryService.cs" />
+    <Compile Include="Assets\WhisperWardAI\Runtime\Navigation\SimplePatrolDriver.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\FSM\GuardStateBase.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\Core\SessionPhaseCoordinator.cs" />
     <Compile Include="Assets\WhisperWardAI\Runtime\SuspicionGrade\SuspicionGradeModels.cs" />
@@ -1201,6 +1210,10 @@
       <HintPath>C:\Program Files\Unity\Hub\Editor\6000.3.17f1\Editor\Data\NetStandard\compat\2.1.0\shims\netfx\System.Xml.Serialization.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="Unity.AI.Navigation">
+      <HintPath>Library\ScriptAssemblies\Unity.AI.Navigation.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="UnityEditor.UI">
       <HintPath>Library\ScriptAssemblies\UnityEditor.UI.dll</HintPath>
       <Private>False</Private>
@@ -1211,6 +1224,8 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="WhisperWard.Foundation.csproj" />
+    <ProjectReference Include="WhisperWard.Core.csproj" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>

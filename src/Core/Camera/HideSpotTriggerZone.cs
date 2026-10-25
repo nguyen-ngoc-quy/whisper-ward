@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace WhisperWard.Core.Camera
+namespace WhisperWard.Core.CameraRig
 {
     /// <summary>
     /// Trigger volume component mounted on hide spot trigger volumes (Layer 10: HideSpotTrigger).

@@ -106,7 +106,7 @@ namespace WhisperWard.Core.Player
             if (_playerController != null && _playerController.Fsm != null)
             {
                 speed = _playerController.Fsm.EffectiveSpeed;
-                isCrouched = _playerController.Fsm.CurrentStance == MovementStance.Crouch;
+                isCrouched = _playerController.Fsm.CurrentStance == MovementStance.Crouched;
             }
             else if (deltaTime > 0.0001f)
             {
