@@ -4,7 +4,7 @@
 
 [![Unity 6 LTS](https://img.shields.io/badge/Unity-6000.3.17f1%20LTS-black?logo=unity)](https://unity.com/)
 [![Render Pipeline](https://img.shields.io/badge/Pipeline-URP-informational)](https://unity.com/srp/Universal-Render-Pipeline)
-[![Automated Tests](https://img.shields.io/badge/Tests-295%2B%20Passing-success)](tests/)
+[![Automated Tests](https://img.shields.io/badge/Tests-313%2B%20Passing-success)](tests/)
 [![Architecture](https://img.shields.io/badge/GC%20Allocations-Zero%20on%20Hot%20Paths-blue)](#performance--engineering-standards)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
 
@@ -17,11 +17,12 @@
 Taking inspiration from classic tactical stealth titles (*Metal Gear Solid*, *Thief*, *Splinter Cell*), Whisper Ward puts the player in an infiltrated security compound where intelligent AI guards coordinate, investigate subtle acoustic disturbances, broadcast radio alerts, and pursue evasive targets.
 
 ### Key Technical Highlights
-- 🧠 **Handcrafted AI Architecture**: Custom Raycast Perception Sensor ($90^\circ, 12\text{ m}$), Distance-Inverse Suspicion Accumulator, 3-State FSM (`Patrol` $\leftrightarrow$ `Investigate` $\leftrightarrow$ `Chase`), and Coordinated Swarm Radio Alerting.
+- 🧠 **Handcrafted AI Architecture**: Custom Raycast Perception Sensor ($90^\circ, 12\text{ m}$), Autonomous Security Camera AI Sensor ($\pm 45^\circ$ kinematic sweep, $0.5\text{ s}$ confirmation window), Distance-Inverse Suspicion Accumulator, 3-State FSM (`Patrol` $\leftrightarrow$ `Investigate` $\leftrightarrow$ `Chase`), and Coordinated Swarm Radio Alerting.
 - 📐 **Rigorous Mathematical Models**: Explicit differential equations for suspicion accumulation ($\frac{dA}{dt} = \min(1.5/d, 0.60)$), exponential residual wariness decay, and planar distance stride-length integration.
-- 🔊 **Zero-Allocation 4-Bus Audio Engine (`ADR-0003`)**: Hierarchical mixing (`Master`, `SFX_Diegetic`, `Feedback_NonDiegetic`, `Ambience`), pre-allocated 16-channel voice pool, priority voice stealing, and dynamic ambient ducking ($-6\text{ dB}$ on active Chase).
+- 🔊 **Zero-Allocation 4-Bus Audio Engine (`ADR-0003`)**: Hierarchical mixing (`Master`, `SFX_Diegetic`, `Feedback_NonDiegetic`, `Ambience`), pre-allocated 16-channel voice pool, priority voice stealing, dynamic ambient ducking ($-6\text{ dB}$ on active Chase), and runtime Settings Menu volume sliders.
+- 💡 **Cinematic Visual Overhaul & Game Feel**: Procedural Volumetric Light Shaft Cones, PBR facility material palette (dark slate floor, tactical navy concrete), emissive stealth visors, camera trauma shake on Chase, dynamic hiding vignette, and acoustic ground ripple rings.
 - 🏆 **Stealth Grade Operator**: Strict ranking formula awarding Rank S exclusively for zero-detection ghost runs while distinguishing between spotted chases and distraction tool usage.
-- 🛡️ **295+ Automated NUnit Tests**: 100% pass rate across 37 test suites verifying physics collisions, AI state machines, math formulas, audio pooling, and UI transitions.
+- 🛡️ **313+ Automated NUnit Tests**: 100% pass rate across 42 test suites verifying physics collisions, AI state machines, math formulas, audio pooling, and UI transitions.
 - ⚡ **Zero GC Allocations**: All hot paths (movement ticks, perception raycasts, audio voice requests, UI updates) generate zero managed heap allocations.
 
 ---

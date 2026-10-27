@@ -5,7 +5,7 @@
 > **Engine**: Unity 6 LTS (6000.3.17f1) | Universal Render Pipeline (URP)  
 > **Primary Focus**: Handcrafted AI Systems (Perception, Suspicion, FSM, Coordinated Alert)  
 > **Architecture Standard**: Zero GC Allocations on Hot-Paths | Deterministic NUnit Test Suite  
-> **Automated Tests**: 295+ Automated Unit & Integration Tests (100% Pass Rate)  
+> **Automated Tests**: 313+ Automated Unit & Integration Tests (100% Pass Rate)  
 
 ---
 

@@ -164,6 +164,15 @@ namespace WhisperWard.AI.Alert
         }
 
         /// <summary>
+        /// Explicit broadcast dispatch for external security sensors (e.g. cameras, alarms).
+        /// Zero managed allocations.
+        /// </summary>
+        public static void BroadcastCustomAlert(GuardAlertEvent alert)
+        {
+            OnAnyGuardAlertBroadcast?.Invoke(alert);
+        }
+
+        /// <summary>
         /// Receiver callback invoked when any guard broadcasts a radio alert.
         /// Enforces self-rejection, Chase-wins immunity (R13), distance threshold,
         /// and applies bounded spatial error offset to the resulting investigation target.

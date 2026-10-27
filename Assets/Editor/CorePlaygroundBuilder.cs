@@ -11,6 +11,7 @@ using WhisperWard.AI.FSM;
 using WhisperWard.Core.Audio;
 using WhisperWard.Core.CameraRig;
 using WhisperWard.Core.Player;
+using WhisperWard.Core.Rendering;
 using WhisperWard.UI.Menu;
 
 namespace WhisperWard.Editor
@@ -228,11 +229,38 @@ namespace WhisperWard.Editor
             audioManager.InitializePool(16);
             audioRoot.AddComponent<WorldInteractionAudioController>();
 
-            // 14. In-Game Pause Menu Controller (UI-PAUSE-01)
+            // 14. In-Game Pause Menu & Settings Controller (UI-PAUSE-01, UI-SET-01)
             GameObject pauseRoot = new GameObject("--- UI_PAUSE_MENU ---");
             pauseRoot.AddComponent<PauseMenuController>();
+            pauseRoot.AddComponent<SettingsMenuController>();
 
-            // 15. Ensure Scenes directory exists and Save Scene
+            // 15. Security Camera System with Volumetric Cone (AI-CAM-01, VFX-GRAPHICS-01)
+            GameObject cameraRoot = new GameObject("--- SECURITY_CAMERA ---");
+            cameraRoot.transform.position = new Vector3(-8.5f, 3.2f, 8.5f);
+            cameraRoot.transform.rotation = Quaternion.Euler(20f, 135f, 0f);
+            SecurityCameraSensor camSensor = cameraRoot.AddComponent<SecurityCameraSensor>();
+            camSensor.ConfigureSweep(centerAngle: 135f, sweepHalfAngle: 45f, sweepSpeedDegPerSec: 25f);
+            camSensor.ConfigurePerception(fov: 60f, range: 14f, confirmTime: 0.5f);
+            cameraRoot.AddComponent<SecurityCameraVisualizer>();
+
+            GameObject coneObj = new GameObject("Volumetric_Sight_Cone");
+            coneObj.transform.SetParent(cameraRoot.transform);
+            coneObj.transform.localPosition = Vector3.zero;
+            coneObj.transform.localRotation = Quaternion.identity;
+            MeshFilter mf = coneObj.AddComponent<MeshFilter>();
+            mf.sharedMesh = VolumetricConeMeshBuilder.BuildConeMesh(60f, 14f, 16);
+            MeshRenderer mr = coneObj.AddComponent<MeshRenderer>();
+            Material volMat = GetOrCreateMaterial("Assets/Materials/Mat_Volumetric_Light.mat", new Color(0.0f, 0.9f, 1.0f, 0.15f));
+            if (mr != null && volMat != null)
+            {
+                mr.sharedMaterial = volMat;
+            }
+
+            // 16. Stealth Game Feel & VFX Coordinator (VFX-FEEL-02)
+            GameObject feelRoot = new GameObject("--- GAME_FEEL_COORDINATOR ---");
+            feelRoot.AddComponent<StealthGameFeelController>();
+
+            // 17. Ensure Scenes directory exists and Save Scene
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.SaveScene(scene, ScenePath);
 
@@ -304,6 +332,38 @@ namespace WhisperWard.Editor
             {
                 UnityEngine.Object.DestroyImmediate(visualCol);
             }
+
+            // Tactical Enforcer Helmet & Shoulder Flashlight (VFX-GRAPHICS-01)
+            GameObject helmet = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            helmet.name = "Tactical_Helmet";
+            helmet.transform.SetParent(visual.transform);
+            helmet.transform.localPosition = new Vector3(0f, 0.60f, 0.15f);
+            helmet.transform.localScale = new Vector3(0.65f, 0.25f, 0.60f);
+            helmet.layer = layer;
+            Collider helmetCol = helmet.GetComponent<Collider>();
+            if (helmetCol != null) UnityEngine.Object.DestroyImmediate(helmetCol);
+
+            GameObject flashlight = new GameObject("Shoulder_Tactical_Flashlight");
+            flashlight.transform.SetParent(visual.transform);
+            flashlight.transform.localPosition = new Vector3(0.40f, 0.50f, 0.20f);
+            flashlight.transform.localRotation = Quaternion.Euler(10f, 0f, 0f);
+            Light flashLight = flashlight.AddComponent<Light>();
+            flashLight.type = LightType.Spot;
+            flashLight.spotAngle = 60.0f;
+            flashLight.range = 12.0f;
+            flashLight.color = new Color(1.0f, 0.95f, 0.85f, 1.0f);
+            flashLight.intensity = 1.8f;
+
+            // Volumetric beam for guard flashlight
+            GameObject guardBeam = new GameObject("Volumetric_Flashlight_Beam");
+            guardBeam.transform.SetParent(flashlight.transform);
+            guardBeam.transform.localPosition = Vector3.zero;
+            guardBeam.transform.localRotation = Quaternion.identity;
+            MeshFilter gbf = guardBeam.AddComponent<MeshFilter>();
+            gbf.sharedMesh = VolumetricConeMeshBuilder.BuildConeMesh(60f, 12f, 12);
+            MeshRenderer gmr = guardBeam.AddComponent<MeshRenderer>();
+            Material beamMat = GetOrCreateMaterial("Assets/Materials/Mat_Volumetric_Light.mat", new Color(1.0f, 0.95f, 0.85f, 0.12f));
+            if (gmr != null && beamMat != null) gmr.sharedMaterial = beamMat;
 
             // Add SimplePatrolDriver
             SimplePatrolDriver patrolDriver = guardRoot.AddComponent<SimplePatrolDriver>();
@@ -392,6 +452,19 @@ namespace WhisperWard.Editor
             {
                 UnityEngine.Object.DestroyImmediate(visualCol);
             }
+
+            // Tactical Stealth Visor (VFX-GRAPHICS-01)
+            GameObject visor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            visor.name = "Stealth_Visor";
+            visor.transform.SetParent(visual.transform);
+            visor.transform.localPosition = new Vector3(0f, 0.55f, 0.40f);
+            visor.transform.localScale = new Vector3(0.50f, 0.12f, 0.20f);
+            visor.layer = layer;
+            Collider visorCol = visor.GetComponent<Collider>();
+            if (visorCol != null) UnityEngine.Object.DestroyImmediate(visorCol);
+            Material visorMat = GetOrCreateMaterial("Assets/Materials/Mat_Visor_Cyan.mat", new Color(0.0f, 0.90f, 1.0f, 1f));
+            Renderer visorRend = visor.GetComponent<Renderer>();
+            if (visorRend != null && visorMat != null) visorRend.sharedMaterial = visorMat;
 
             // Add PlayerRuntimeDriver
             PlayerRuntimeDriver driver = playerRoot.AddComponent<PlayerRuntimeDriver>();
