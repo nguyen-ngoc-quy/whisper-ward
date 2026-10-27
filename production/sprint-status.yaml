@@ -9,60 +9,60 @@
 #   done           <->  Complete
 #   blocked        <->  Blocked
 
-sprint: 6
-goal: "Cân bằng độ nhạy và nhịp thở của AI lính gác (AI Balance & Tuning); tích hợp toàn diện hạ tầng âm thanh (Audio Manager & SFX Presentation) gồm tiếng bước chân phân tầng theo dáng đi, âm thanh cảnh báo lính gác / stinger phát hiện, âm thanh tương tác cơ khí và nhạc nền ambient lén lút."
-start: "2026-10-27"
-end: "2026-11-10"
+sprint: 7
+goal: "Hoàn thiện mỹ thuật và ánh sáng Cold Watch (Visual Polish & URP Post-Processing), điều phối giao diện tạm dừng/menu (Pause Menu Controller), kiểm chuẩn ngân sách hiệu năng (Performance Budget 60 FPS / Draw Calls ceiling), tự động hóa đóng gói bản build WebGL/Windows Standalone, và hoàn tất tài liệu kỹ thuật Portfolio Showcase khẳng định năng lực tự viết AI và hệ thống game 3D."
+start: "2026-11-10"
+end: "2026-11-24"
 generated: "2026-10-27"
 updated: "2026-10-27"
 
 stories:
-  - id: "AUDIO-01"
-    name: "Core Audio Infrastructure & Sound Manager"
-    file: "production/epics/audio-ui-feedback/story-002-core-audio-sound-manager.md"
+  - id: "UI-PAUSE-01"
+    name: "Pause & In-Game Menu Controller"
+    file: "production/epics/ui-presentation/story-001-pause-menu-controller.md"
     priority: must-have
     status: done
-    owner: "engine-programmer"
+    owner: "ui-programmer"
     estimate_days: 0.5
     blocker: ""
     completed: "2026-10-27"
 
-  - id: "AUDIO-02"
-    name: "Player Dual-Voice Footstep Audio System"
-    file: "production/epics/audio-ui-feedback/story-003-player-footstep-audio.md"
+  - id: "VFX-POST-01"
+    name: "Cold Watch URP Post-Processing & Lighting Profile"
+    file: "production/epics/ui-presentation/story-002-cold-watch-post-process-lighting.md"
     priority: must-have
     status: done
-    owner: "gameplay-programmer"
+    owner: "technical-artist"
     estimate_days: 0.5
     blocker: ""
     completed: "2026-10-27"
 
-  - id: "AUDIO-03"
-    name: "Guard Awareness SFX & Alert Stingers"
-    file: "production/epics/audio-ui-feedback/story-004-guard-awareness-sfx-stingers.md"
+  - id: "PERF-01"
+    name: "Performance Budget & Frame Time Validator"
+    file: "production/epics/release-packaging/story-001-performance-budget-validator.md"
     priority: must-have
     status: done
-    owner: "gameplay-programmer"
+    owner: "performance-analyst"
     estimate_days: 0.5
     blocker: ""
     completed: "2026-10-27"
 
-  - id: "AI-TUNE-01"
-    name: "AI Perception & Give-Up Pacing Tuning"
-    file: "production/epics/guard-ai-perception/story-006-perception-giveup-pacing-tuning.md"
+  - id: "BUILD-01"
+    name: "Release Build Automation & Platform Packaging"
+    file: "production/epics/release-packaging/story-002-release-build-automation.md"
     priority: must-have
     status: done
-    owner: "ai-programmer"
-    estimate_days: 0.5
+    owner: "devops-engineer"
+    estimate_days: 0.4
     blocker: ""
     completed: "2026-10-27"
 
-  - id: "AUDIO-04"
-    name: "World Interaction & Ambient Audio"
-    file: "production/epics/audio-ui-feedback/story-005-world-interaction-ambient-audio.md"
+  - id: "DOCS-PORTFOLIO-01"
+    name: "Technical Architecture Showcase & Release Portfolio Guide"
+    file: "production/epics/release-packaging/story-003-portfolio-showcase-technical-guide.md"
     priority: should-have
     status: done
-    owner: "level-designer"
+    owner: "technical-director"
     estimate_days: 0.4
     blocker: ""
     completed: "2026-10-27"

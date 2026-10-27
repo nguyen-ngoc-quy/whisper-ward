@@ -11,6 +11,7 @@ using WhisperWard.AI.FSM;
 using WhisperWard.Core.Audio;
 using WhisperWard.Core.CameraRig;
 using WhisperWard.Core.Player;
+using WhisperWard.UI.Menu;
 
 namespace WhisperWard.Editor
 {
@@ -227,7 +228,11 @@ namespace WhisperWard.Editor
             audioManager.InitializePool(16);
             audioRoot.AddComponent<WorldInteractionAudioController>();
 
-            // 14. Ensure Scenes directory exists and Save Scene
+            // 14. In-Game Pause Menu Controller (UI-PAUSE-01)
+            GameObject pauseRoot = new GameObject("--- UI_PAUSE_MENU ---");
+            pauseRoot.AddComponent<PauseMenuController>();
+
+            // 15. Ensure Scenes directory exists and Save Scene
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.SaveScene(scene, ScenePath);
 
