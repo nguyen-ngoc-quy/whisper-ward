@@ -3,27 +3,29 @@
 > **Layer**: AI & Perception (Core Gameplay)  
 > **GDD Reference**: `design/gdd/perception.md` (#2 Perception), `design/gdd/guard-ai-fsm.md` (#1 Guard AI FSM)  
 > **Governing ADRs**: `ADR-0002` (Physics Query & Collision), `ADR-0007` (NavMesh Pathfinding)  
-> **Status**: In Progress  
-> **Stories**: 5 stories (`GUARD-01` through `GUARD-05`)  
+> **Status**: Complete  
+> **Stories**: 6 stories (`GUARD-01` through `GUARD-05` [Complete], `AI-TUNE-01` [Complete])  
 
 ## Overview
 
 The Guard AI & Perception epic establishes the thinking enemy intelligence for Whisper Ward. It incorporates:
-1. **Raycast Vision Cone ($100^\circ, 12\text{ m}$)** with 5 Hz scanning cadence, E20 sensing mask, and crouch/stand height adaptation.
+1. **Raycast Vision Cone ($90^\circ\text{--}100^\circ, 12\text{ m}$)** with 5 Hz scanning cadence, E20 sensing mask, and crouch/stand height adaptation.
 2. **Two-Component Suspicion Meter**: Distance-inverse Accumulator ($dA/dt = \min(1.5/d, 0.60)$) and residual wariness ($R$) that sinks the investigate threshold.
 3. **Guard FSM Controller (Patrol $\to$ Investigate $\to$ Chase)** with strict 3-state cap, speed scaling ($2.3 \to 5.0 \to 7.5\text{ m/s}$), and a $5.5\text{ m}$ in $1.0\text{ s}$ catch contract.
 4. **Visual Telemetry**: Real-time 3D vision cone visualization (Color transitioning Moonlit/Green $\to$ Yellow $\to$ Red).
 5. **Search Dwell & Give-up**: $4.0\text{ s}$ search dwell look-around at Last Known Position (LKP) before returning to patrol.
+6. **Polish & Pacing Calibration**: Tuning FOV, give-up pacing, and suspicion reaction windows for balanced stealth play.
 
 ## Stories
 
 | # | Story | Type | Status | Owner |
 |---|-------|------|--------|-------|
-| `GUARD-01` | Vision Cone Sensor & Line-of-Sight Sensing Engine | Logic/Integration | Ready | ai-programmer |
-| `GUARD-02` | Suspicion Accumulator & Residual Wariness Engine | Logic | Ready | systems-designer |
-| `GUARD-03` | Vision Cone 3D Mesh Visualizer & Suspicion Indicator | Visual/Feel | Ready | technical-artist |
-| `GUARD-04` | Guard FSM Runtime Controller (Patrol -> Investigate -> Chase) | Integration | Ready | ai-programmer |
-| `GUARD-05` | Search Dwell & Give-up Return to Patrol | Logic | Ready | ai-programmer |
+| `GUARD-01` | Vision Cone Sensor & Line-of-Sight Sensing Engine | Logic/Integration | Complete | ai-programmer |
+| `GUARD-02` | Suspicion Accumulator & Residual Wariness Engine | Logic | Complete | systems-designer |
+| `GUARD-03` | Vision Cone 3D Mesh Visualizer & Suspicion Indicator | Visual/Feel | Complete | technical-artist |
+| `GUARD-04` | Guard FSM Runtime Controller (Patrol -> Investigate -> Chase) | Integration | Complete | ai-programmer |
+| `GUARD-05` | Search Dwell & Give-up Return to Patrol | Logic | Complete | ai-programmer |
+| `AI-TUNE-01` | AI Perception & Give-Up Pacing Tuning | Balance / Logic | Complete | ai-programmer |
 
 ## Definition of Done
 

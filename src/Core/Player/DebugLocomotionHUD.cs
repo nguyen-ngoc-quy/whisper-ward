@@ -3,6 +3,9 @@ using System.Text;
 using UnityEngine;
 using WhisperWard.Core.CameraRig;
 using WhisperWard.Core.Contracts;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace WhisperWard.Core.Player
 {
@@ -118,9 +121,23 @@ namespace WhisperWard.Core.Player
             RefreshTelemetry(force: true);
         }
 
+        /// <summary>
+        /// Reads the HUD toggle key across input backends; the legacy Input API
+        /// throws when Player Settings select the Input System package only.
+        /// </summary>
+        private bool IsTogglePressed()
+        {
+#if ENABLE_INPUT_SYSTEM
+            Keyboard keyboard = Keyboard.current;
+            return keyboard != null && keyboard.f3Key.wasPressedThisFrame;
+#else
+            return Input.GetKeyDown(_toggleKey);
+#endif
+        }
+
         private void Update()
         {
-            if (Input.GetKeyDown(_toggleKey))
+            if (IsTogglePressed())
             {
                 _showHUD = !_showHUD;
             }

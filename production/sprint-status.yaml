@@ -9,60 +9,60 @@
 #   done           <->  Complete
 #   blocked        <->  Blocked
 
-sprint: 5
-goal: "Xây dựng vòng lặp nhiệm vụ chơi được hoàn chỉnh (Playable Objective Loop): Lấy vật phẩm mục tiêu (Keycard/Data Drive), mở khóa cổng bảo an (Locked Security Gate), rút lui an toàn qua ranh giới thoát hiểm (Extraction Zone), và Đánh giá Xếp hạng Lén lút (Stealth Grade Operator System) với bảng tổng kết điểm số Rank S/A/B/C/F."
+sprint: 6
+goal: "Cân bằng độ nhạy và nhịp thở của AI lính gác (AI Balance & Tuning); tích hợp toàn diện hạ tầng âm thanh (Audio Manager & SFX Presentation) gồm tiếng bước chân phân tầng theo dáng đi, âm thanh cảnh báo lính gác / stinger phát hiện, âm thanh tương tác cơ khí và nhạc nền ambient lén lút."
 start: "2026-10-27"
-end: "2026-11-07"
-generated: "2026-10-04"
-updated: "2026-10-04"
+end: "2026-11-10"
+generated: "2026-10-27"
+updated: "2026-10-27"
 
 stories:
-  - id: "GRADE-01"
-    name: "Stealth Grade Operator System"
-    file: "production/epics/suspicion-meter-grade/story-002-stealth-grade-operator.md"
+  - id: "AUDIO-01"
+    name: "Core Audio Infrastructure & Sound Manager"
+    file: "production/epics/audio-ui-feedback/story-002-core-audio-sound-manager.md"
+    priority: must-have
+    status: done
+    owner: "engine-programmer"
+    estimate_days: 0.5
+    blocker: ""
+    completed: "2026-10-27"
+
+  - id: "AUDIO-02"
+    name: "Player Dual-Voice Footstep Audio System"
+    file: "production/epics/audio-ui-feedback/story-003-player-footstep-audio.md"
     priority: must-have
     status: done
     owner: "gameplay-programmer"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-10-04"
+    completed: "2026-10-27"
 
-  - id: "OBJ-01"
-    name: "Objective Keycard Pickup & Inventory State"
-    file: "production/epics/objective-mission-flow/story-001-keycard-pickup-inventory.md"
+  - id: "AUDIO-03"
+    name: "Guard Awareness SFX & Alert Stingers"
+    file: "production/epics/audio-ui-feedback/story-004-guard-awareness-sfx-stingers.md"
     priority: must-have
     status: done
     owner: "gameplay-programmer"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-10-04"
+    completed: "2026-10-27"
 
-  - id: "OBJ-02"
-    name: "Locked Security Gate & Extraction Zone"
-    file: "production/epics/objective-mission-flow/story-002-locked-gate-extraction-zone.md"
+  - id: "AI-TUNE-01"
+    name: "AI Perception & Give-Up Pacing Tuning"
+    file: "production/epics/guard-ai-perception/story-006-perception-giveup-pacing-tuning.md"
     priority: must-have
     status: done
-    owner: "gameplay-programmer"
+    owner: "ai-programmer"
     estimate_days: 0.5
-    blocker: "OBJ-01"
-    completed: "2026-10-05"
+    blocker: ""
+    completed: "2026-10-27"
 
-  - id: "FLOW-01"
-    name: "Mission Game Loop & Lifecycle Controller"
-    file: "production/epics/objective-mission-flow/story-003-mission-lifecycle-controller.md"
+  - id: "AUDIO-04"
+    name: "World Interaction & Ambient Audio"
+    file: "production/epics/audio-ui-feedback/story-005-world-interaction-ambient-audio.md"
     priority: should-have
     status: done
-    owner: "gameplay-programmer"
+    owner: "level-designer"
     estimate_days: 0.4
-    blocker: "GRADE-01, OBJ-02"
-    completed: "2026-10-13"
-
-  - id: "UI-RESULT-01"
-    name: "End-of-Mission Scorecard & Grade Card HUD"
-    file: "production/epics/suspicion-meter-grade/story-003-end-of-mission-grade-card-ui.md"
-    priority: should-have
-    status: done
-    owner: "ui-programmer"
-    estimate_days: 0.5
-    blocker: "GRADE-01, FLOW-01"
-    completed: "2026-10-13"
+    blocker: ""
+    completed: "2026-10-27"

@@ -8,6 +8,7 @@ using UnityEngine.SceneManagement;
 using WhisperWard.AI.Navigation;
 using WhisperWard.AI.Perception;
 using WhisperWard.AI.FSM;
+using WhisperWard.Core.Audio;
 using WhisperWard.Core.CameraRig;
 using WhisperWard.Core.Player;
 
@@ -220,7 +221,13 @@ namespace WhisperWard.Editor
             DebugLocomotionHUD hud = hudRoot.AddComponent<DebugLocomotionHUD>();
             hud.Configure(playerRoot.GetComponent<PlayerThirdPersonController>(), orbitDriver);
 
-            // 13. Ensure Scenes directory exists and Save Scene
+            // 13. Audio Infrastructure (AUDIO-01, AUDIO-04)
+            GameObject audioRoot = new GameObject("--- AUDIO ---");
+            AudioManager audioManager = audioRoot.AddComponent<AudioManager>();
+            audioManager.InitializePool(16);
+            audioRoot.AddComponent<WorldInteractionAudioController>();
+
+            // 14. Ensure Scenes directory exists and Save Scene
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.SaveScene(scene, ScenePath);
 
@@ -318,6 +325,10 @@ namespace WhisperWard.Editor
             GuardHearingSensor hearing = guardRoot.AddComponent<GuardHearingSensor>();
             hearing.Configure(fsm);
 
+            // Add GuardAwarenessAudioController (AUDIO-03)
+            GuardAwarenessAudioController awarenessAudio = guardRoot.AddComponent<GuardAwarenessAudioController>();
+            awarenessAudio.Configure(fsm);
+
             // Save as Prefab Asset
             PrefabUtility.SaveAsPrefabAssetAndConnect(guardRoot, GuardPrefabPath, InteractionMode.AutomatedAction);
             Debug.Log($"[CorePlaygroundBuilder] Saved Guard Patrol NPC prefab at {GuardPrefabPath}");
@@ -384,6 +395,9 @@ namespace WhisperWard.Editor
             // Add PlayerFootstepNoiseEmitter (NOISE-01)
             PlayerFootstepNoiseEmitter noiseEmitter = playerRoot.AddComponent<PlayerFootstepNoiseEmitter>();
             noiseEmitter.Configure(controller);
+
+            // Add PlayerFootstepAudioController (AUDIO-02)
+            playerRoot.AddComponent<PlayerFootstepAudioController>();
 
             // Save as Prefab Asset
             PrefabUtility.SaveAsPrefabAssetAndConnect(playerRoot, PlayerPrefabPath, InteractionMode.AutomatedAction);

@@ -21,8 +21,8 @@ Xây dựng vòng lặp nhiệm vụ chơi được hoàn chỉnh (Playable Obje
 ### Should Have
 | ID | Task | Agent/Owner | Est. Days | Dependencies | Acceptance Criteria | Status |
 |---|---|---|---|---|---|---|
-| `FLOW-01` | Mission Game Loop & Lifecycle Controller | `gameplay-programmer` | 0.4d (3h) | `GRADE-01`, `OBJ-02` | AC-FLOW-01..03 (Điều phối vòng đời nhiệm vụ: Infiltrate -> ObjectiveAcquired -> Extracting -> Completed / Captured, kết nối FSM lính gác và Grade Operator) | Backlog |
-| `UI-RESULT-01` | End-of-Mission Scorecard & Grade Card HUD | `ui-programmer` | 0.5d (4h) | `GRADE-01`, `FLOW-01` | AC-UI-05..07 (Hiển thị bảng tổng kết huân chương S/A/B/C/F, điểm số, chi tiết số lần bị phát hiện và thời gian hoàn thành) | Backlog |
+| `FLOW-01` | Mission Game Loop & Lifecycle Controller | `gameplay-programmer` | 0.4d (3h) | `GRADE-01`, `OBJ-02` | AC-FLOW-01..03 (Điều phối vòng đời nhiệm vụ: Infiltrate -> ObjectiveAcquired -> Extracting -> Completed / Captured, kết nối FSM lính gác và Grade Operator) | Complete |
+| `UI-RESULT-01` | End-of-Mission Scorecard & Grade Card HUD | `ui-programmer` | 0.5d (4h) | `GRADE-01`, `FLOW-01` | AC-UI-05..07 (Hiển thị bảng tổng kết huân chương S/A/B/C/F, điểm số, chi tiết số lần bị phát hiện và thời gian hoàn thành) | Complete |
 
 ## Carryover from Previous Sprint
 None (Sprint 04 hoàn thành 100% 6/6 stories, 224 tests passing).
@@ -35,13 +35,13 @@ None (Sprint 04 hoàn thành 100% 6/6 stories, 224 tests passing).
 | Tính toán điểm sai lệch do nhiều lính gác cùng phát hiện cùng lúc | Low | High | Bộ chấm điểm `StealthGradeOperator` lọc trùng sự kiện (deduplication) và gộp phạt Chase toàn phòng | `systems-designer` |
 
 ## Definition of Done for this Sprint
-- [ ] Hoàn thành 100% 5 stories (`GRADE-01`, `OBJ-01`, `OBJ-02`, `FLOW-01`, `UI-RESULT-01`)
-- [ ] Tất cả các bài kiểm thử NUnit Unit & Integration mới vượt qua 100%
-- [ ] Tích hợp vào Scene 3D `CorePlayground.unity`:
+- [x] Hoàn thành 100% 5 stories (`GRADE-01`, `OBJ-01`, `OBJ-02`, `FLOW-01`, `UI-RESULT-01`)
+- [x] Tất cả các bài kiểm thử NUnit Unit & Integration mới vượt qua 100%
+- [x] Tích hợp vào Scene 3D `CorePlayground.unity`:
   - Người chơi xuất phát tại Spawn Point
   - Lẻn qua 2 lính gác, nhặt Keycard trên bàn
   - Dùng Keycard mở cửa thoát hiểm
   - Chạy qua ranh giới thoát hiểm -> hiển thị Scorecard đạt Rank (S/A/B/C)
   - Nếu bị lính bắt -> hiển thị Scorecard Rank F
-- [ ] Không có lỗi console hoặc rò rỉ bộ nhớ (0 GC allocations per frame trên hot-path)
-- [ ] Báo cáo QA Sign-Off và Retrospective Sprint 05 được phê duyệt
+- [x] Không có lỗi console hoặc rò rỉ bộ nhớ (0 GC allocations per frame trên hot-path)
+- [x] Báo cáo QA Sign-Off và Retrospective Sprint 05 được phê duyệt

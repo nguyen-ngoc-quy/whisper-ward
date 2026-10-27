@@ -251,6 +251,13 @@ namespace WhisperWard.AI.FSM
                 return;
             }
 
+            // Vision suspicion integrator has no self-update; pump it from the
+            // sensor's latest 5 Hz evaluation every frame.
+            if (_accumulator != null && _sensor != null)
+            {
+                _accumulator.Tick(deltaTime, _sensor.HasLOS, _sensor.TargetDistance);
+            }
+
             switch (_currentState)
             {
                 case GuardState.Patrol:

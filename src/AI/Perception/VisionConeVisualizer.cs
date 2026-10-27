@@ -143,7 +143,7 @@ namespace WhisperWard.AI.Perception
         public void UpdateVisuals()
         {
             float range = _sensor != null ? _sensor.VisionRange : 12.0f;
-            float fov = _sensor != null ? _sensor.VisionFOV : 100.0f;
+            float fov = _sensor != null ? _sensor.VisionFOV : 90.0f;
             LayerMask mask = _sensor != null ? _sensor.OcclusionMask : (1 << 20);
 
             GenerateVertices(range, fov, mask);

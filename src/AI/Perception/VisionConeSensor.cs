@@ -24,8 +24,8 @@ namespace WhisperWard.AI.Perception
         [Tooltip("Maximum detection range in meters (GDD: 12.0m).")]
         [SerializeField] private float _visionRange = 12.0f;
 
-        [Tooltip("Horizontal field-of-view angle in degrees (GDD: 100.0 deg).")]
-        [SerializeField] private float _visionFOV = 100.0f;
+        [Tooltip("Horizontal field-of-view angle in degrees (GDD: 90.0 deg tuned).")]
+        [SerializeField] private float _visionFOV = 90.0f;
 
         [Tooltip("Height of the guard's eye above its feet anchor (default: 1.60m).")]
         [SerializeField] private float _eyeHeight = 1.60f;
@@ -108,7 +108,7 @@ namespace WhisperWard.AI.Perception
         public void Configure(
             IPhysicsQueryService physicsQuery,
             float visionRange = 12.0f,
-            float visionFOV = 100.0f,
+            float visionFOV = 90.0f,
             float tickInterval = 0.20f,
             int occlusionMask = 1 << 20,
             float eyeHeight = 1.60f,
